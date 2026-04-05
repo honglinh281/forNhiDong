@@ -1,4 +1,4 @@
-import { FIELD_LABELS, ROW_STATUS, STATUS_PRIORITY } from '@/lib/constants';
+import { FIELD_LABELS, ROW_STATUS } from '@/lib/constants';
 
 function buildRowReference(row) {
   return row
@@ -45,7 +45,6 @@ function buildFieldResult(field, pdfRow, excelRow) {
 function indexRows(rows) {
   const byHsCode = new Map();
   const orphanRows = [];
-  const duplicateKeys = new Set();
 
   for (const row of rows) {
     if (!row.normalized.hsCode) {
@@ -56,16 +55,11 @@ function indexRows(rows) {
     const group = byHsCode.get(row.normalized.hsCode) ?? [];
     group.push(row);
     byHsCode.set(row.normalized.hsCode, group);
-
-    if (group.length > 1) {
-      duplicateKeys.add(row.normalized.hsCode);
-    }
   }
 
   return {
     byHsCode,
-    orphanRows,
-    duplicateKeys
+    orphanRows
   };
 }
 
@@ -77,13 +71,12 @@ function buildReasonFromIssues(pdfRow, excelRow) {
   return messages.join(' ');
 }
 
-function buildResultRow({ status, hsCode, pdfRow, excelRow, reason, duplicateCounts = null }) {
+function buildResultRow({ status, hsCode, pdfRow, excelRow, reason }) {
   return {
     id: `${status}-${hsCode || 'unknown'}-${pdfRow?.rowNumber ?? 'x'}-${excelRow?.rowNumber ?? 'y'}`,
     hsCode,
     status,
     reason,
-    duplicateCounts,
     pdf: buildRowReference(pdfRow),
     excel: buildRowReference(excelRow),
     fields: {
@@ -135,10 +128,6 @@ function buildSummary(rows) {
         summary.missingInPdfCount += 1;
         summary.errorCount += 1;
         break;
-      case ROW_STATUS.DUPLICATE_HSCODE:
-        summary.duplicateCount += 1;
-        summary.errorCount += 1;
-        break;
       case ROW_STATUS.PARSE_ERROR:
         summary.parseErrorCount += 1;
         summary.errorCount += 1;
@@ -151,16 +140,126 @@ function buildSummary(rows) {
   return summary;
 }
 
+function getPrimaryOrder(row) {
+  if (Number.isInteger(row.pdf?.rowNumber)) {
+    return row.pdf.rowNumber;
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function getSecondaryOrder(row) {
+  if (Number.isInteger(row.excel?.rowNumber)) {
+    return row.excel.rowNumber;
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+}
+
 function sortRows(rows) {
   return [...rows].sort((left, right) => {
-    const statusDelta = STATUS_PRIORITY[left.status] - STATUS_PRIORITY[right.status];
+    const pdfDelta = getPrimaryOrder(left) - getPrimaryOrder(right);
 
-    if (statusDelta !== 0) {
-      return statusDelta;
+    if (pdfDelta !== 0) {
+      return pdfDelta;
+    }
+
+    const excelDelta = getSecondaryOrder(left) - getSecondaryOrder(right);
+
+    if (excelDelta !== 0) {
+      return excelDelta;
     }
 
     return (left.hsCode || '').localeCompare(right.hsCode || '', 'vi');
   });
+}
+
+function sortGroupRows(rows) {
+  return [...rows].sort((left, right) => left.rowNumber - right.rowNumber);
+}
+
+function buildItemNameLookup(rows) {
+  const lookup = new Map();
+
+  for (const row of rows) {
+    const key = row.normalized.itemName;
+    const queue = lookup.get(key) ?? [];
+    queue.push(row);
+    lookup.set(key, queue);
+  }
+
+  return lookup;
+}
+
+function takeMatchedExcelRow(pdfRow, excelGroup, excelByItemName, consumedExcelRows) {
+  const matchingQueue = excelByItemName.get(pdfRow.normalized.itemName) ?? [];
+
+  while (matchingQueue.length > 0) {
+    const matchedRow = matchingQueue.shift();
+
+    if (!consumedExcelRows.has(matchedRow)) {
+      consumedExcelRows.add(matchedRow);
+      return matchedRow;
+    }
+  }
+
+  for (const excelRow of excelGroup) {
+    if (!consumedExcelRows.has(excelRow)) {
+      consumedExcelRows.add(excelRow);
+      return excelRow;
+    }
+  }
+
+  return null;
+}
+
+function compareMatchedRows({ hsCode, pdfRow, excelRow }) {
+  if (!excelRow) {
+    return buildResultRow({
+      status: ROW_STATUS.MISSING_IN_EXCEL,
+      hsCode,
+      pdfRow,
+      excelRow: null,
+      reason: `HS code ${hsCode} có trong PDF nhưng không thấy trong Excel.`
+    });
+  }
+
+  if (!pdfRow) {
+    return buildResultRow({
+      status: ROW_STATUS.MISSING_IN_PDF,
+      hsCode,
+      pdfRow: null,
+      excelRow,
+      reason: `HS code ${hsCode} có trong Excel nhưng không thấy trong PDF.`
+    });
+  }
+
+  if (pdfRow.issues.length > 0 || excelRow.issues.length > 0) {
+    return buildResultRow({
+      status: ROW_STATUS.PARSE_ERROR,
+      hsCode,
+      pdfRow,
+      excelRow,
+      reason: buildReasonFromIssues(pdfRow, excelRow)
+    });
+  }
+
+  const resultRow = buildResultRow({
+    status: ROW_STATUS.MATCH,
+    hsCode,
+    pdfRow,
+    excelRow,
+    reason: 'Dữ liệu khớp hoàn toàn.'
+  });
+
+  const hasMismatch = Object.values(resultRow.fields).some((field) => field.status === 'mismatch');
+
+  if (hasMismatch) {
+    resultRow.status = ROW_STATUS.MISMATCH;
+    resultRow.reason = buildMismatchReason(resultRow.fields);
+  }
+
+  return resultRow;
 }
 
 export function compareDeclarations(excelRows, pdfRows) {
@@ -195,84 +294,36 @@ export function compareDeclarations(excelRows, pdfRows) {
   const hsCodes = new Set([...excelIndex.byHsCode.keys(), ...pdfIndex.byHsCode.keys()]);
 
   for (const hsCode of hsCodes) {
-    const excelGroup = excelIndex.byHsCode.get(hsCode) ?? [];
-    const pdfGroup = pdfIndex.byHsCode.get(hsCode) ?? [];
+    const excelGroup = sortGroupRows(excelIndex.byHsCode.get(hsCode) ?? []);
+    const pdfGroup = sortGroupRows(pdfIndex.byHsCode.get(hsCode) ?? []);
 
-    if (excelGroup.length > 1 || pdfGroup.length > 1) {
-      rows.push(
-        buildResultRow({
-          status: ROW_STATUS.DUPLICATE_HSCODE,
-          hsCode,
-          pdfRow: pdfGroup[0] ?? null,
-          excelRow: excelGroup[0] ?? null,
-          reason: `HS code ${hsCode} bị trùng: PDF ${pdfGroup.length} dòng, Excel ${excelGroup.length} dòng.`,
-          duplicateCounts: {
-            pdf: pdfGroup.length,
-            excel: excelGroup.length
-          }
-        })
-      );
+    if (pdfGroup.length === 0) {
+      excelGroup.forEach((excelRow) => {
+        rows.push(compareMatchedRows({ hsCode, pdfRow: null, excelRow }));
+      });
       continue;
     }
 
-    const excelRow = excelGroup[0] ?? null;
-    const pdfRow = pdfGroup[0] ?? null;
-
-    if (!excelRow) {
-      rows.push(
-        buildResultRow({
-          status: ROW_STATUS.MISSING_IN_EXCEL,
-          hsCode,
-          pdfRow,
-          excelRow: null,
-          reason: `HS code ${hsCode} có trong PDF nhưng không thấy trong Excel.`
-        })
-      );
+    if (excelGroup.length === 0) {
+      pdfGroup.forEach((pdfRow) => {
+        rows.push(compareMatchedRows({ hsCode, pdfRow, excelRow: null }));
+      });
       continue;
     }
 
-    if (!pdfRow) {
-      rows.push(
-        buildResultRow({
-          status: ROW_STATUS.MISSING_IN_PDF,
-          hsCode,
-          pdfRow: null,
-          excelRow,
-          reason: `HS code ${hsCode} có trong Excel nhưng không thấy trong PDF.`
-        })
-      );
-      continue;
-    }
+    const consumedExcelRows = new Set();
+    const excelByItemName = buildItemNameLookup(excelGroup);
 
-    if (pdfRow.issues.length > 0 || excelRow.issues.length > 0) {
-      rows.push(
-        buildResultRow({
-          status: ROW_STATUS.PARSE_ERROR,
-          hsCode,
-          pdfRow,
-          excelRow,
-          reason: buildReasonFromIssues(pdfRow, excelRow)
-        })
-      );
-      continue;
-    }
-
-    const resultRow = buildResultRow({
-      status: ROW_STATUS.MATCH,
-      hsCode,
-      pdfRow,
-      excelRow,
-      reason: 'Dữ liệu khớp hoàn toàn.'
+    pdfGroup.forEach((pdfRow) => {
+      const excelRow = takeMatchedExcelRow(pdfRow, excelGroup, excelByItemName, consumedExcelRows);
+      rows.push(compareMatchedRows({ hsCode, pdfRow, excelRow }));
     });
 
-    const hasMismatch = Object.values(resultRow.fields).some((field) => field.status === 'mismatch');
-
-    if (hasMismatch) {
-      resultRow.status = ROW_STATUS.MISMATCH;
-      resultRow.reason = buildMismatchReason(resultRow.fields);
-    }
-
-    rows.push(resultRow);
+    excelGroup.forEach((excelRow) => {
+      if (!consumedExcelRows.has(excelRow)) {
+        rows.push(compareMatchedRows({ hsCode, pdfRow: null, excelRow }));
+      }
+    });
   }
 
   const sortedRows = sortRows(rows);

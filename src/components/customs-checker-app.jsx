@@ -243,7 +243,7 @@ export default function CustomsCheckerApp() {
     {
       label: 'Sai lệch',
       tone: 'warning',
-      value: result ? result.summary.errorCount : '--'
+      value: result ? result.summary.mismatchCount : '--'
     }
   ];
 
@@ -331,7 +331,7 @@ export default function CustomsCheckerApp() {
               <button
                 aria-pressed={showOnlyErrors}
                 className={`filter-chip ${showOnlyErrors ? 'is-active' : ''}`}
-                disabled={result.summary.errorCount === 0}
+                disabled={result.summary.mismatchCount === 0}
                 onClick={() => setShowOnlyErrors((current) => !current)}
                 type="button"
               >

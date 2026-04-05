@@ -66,12 +66,54 @@ describe('compareDeclarations', () => {
     expect(rows[0].status).toBe(ROW_STATUS.MISSING_IN_PDF);
   });
 
-  it('marks duplicated hs codes', () => {
-    const excelRows = [buildRow('excel', 2, {}), buildRow('excel', 3, {})];
-    const pdfRows = [buildRow('pdf', 1, {})];
+  it('keeps repeated hs code groups as matches when item names align', () => {
+    const excelRows = [
+      buildRow('excel', 50, { hsCode: '392610', itemName: 'Lanyard' }),
+      buildRow('excel', 51, { hsCode: '392610', itemName: 'Phone strap' })
+    ];
+    const pdfRows = [
+      buildRow('pdf', 49, { hsCode: '392610', itemName: 'Lanyard' }),
+      buildRow('pdf', 50, { hsCode: '392610', itemName: 'Phone strap' })
+    ];
+    const { rows, summary } = compareDeclarations(excelRows, pdfRows);
+
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.status === ROW_STATUS.MATCH)).toBe(true);
+    expect(summary.matchCount).toBe(2);
+    expect(summary.duplicateCount).toBe(0);
+  });
+
+  it('marks item name mismatch instead of duplicate hs code when repeated groups differ', () => {
+    const excelRows = [
+      buildRow('excel', 50, { hsCode: '392610', itemName: 'Lanyard' }),
+      buildRow('excel', 51, { hsCode: '392610', itemName: 'Phone strap' })
+    ];
+    const pdfRows = [
+      buildRow('pdf', 49, { hsCode: '392610', itemName: 'Lanyard' }),
+      buildRow('pdf', 50, { hsCode: '392610', itemName: 'Key chain' })
+    ];
     const { rows } = compareDeclarations(excelRows, pdfRows);
 
-    expect(rows[0].status).toBe(ROW_STATUS.DUPLICATE_HSCODE);
+    expect(rows[0].status).toBe(ROW_STATUS.MATCH);
+    expect(rows[1].status).toBe(ROW_STATUS.MISMATCH);
+    expect(rows[1].reason).toBe('Sai lệch tại: Tên hàng.');
+  });
+
+  it('sorts rows by pdf order before excel-only rows', () => {
+    const excelRows = [
+      buildRow('excel', 10, { hsCode: '85044090', itemName: 'Bo sac laptop' }),
+      buildRow('excel', 12, { hsCode: '392610', itemName: 'Lanyard' }),
+      buildRow('excel', 20, { hsCode: '999999', itemName: 'Excel only row' })
+    ];
+    const pdfRows = [
+      buildRow('pdf', 49, { hsCode: '392610', itemName: 'Lanyard' }),
+      buildRow('pdf', 3, { hsCode: '85044090', itemName: 'Bo sac laptop', quantity: '12' })
+    ];
+    const { rows } = compareDeclarations(excelRows, pdfRows);
+
+    expect(rows.map((row) => row.pdf?.rowNumber ?? null)).toEqual([3, 49, null]);
+    expect(rows[0].status).toBe(ROW_STATUS.MISMATCH);
+    expect(rows[2].status).toBe(ROW_STATUS.MISSING_IN_PDF);
   });
 
   it('marks parse errors when a row is missing required data', () => {
