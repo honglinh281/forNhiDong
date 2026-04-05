@@ -7,6 +7,7 @@ import { hasAllowedExtension } from '@/lib/normalize';
 
 const FIGMA_EXCEL_ICON = 'https://www.figma.com/api/mcp/asset/c0c0160d-c929-49b2-acf9-5cbff18bdc52';
 const FIGMA_PDF_ICON = 'https://www.figma.com/api/mcp/asset/b97f5cee-d22d-42d4-be6c-2f63caf6349d';
+const LOADING_IFRAME_SRC = 'https://lottie.host/embed/e5064478-1833-4170-b75a-dd9d1a8adc4f/u0oOxdtA8x.lottie';
 
 function ComparisonCell({ field }) {
   return (
@@ -37,6 +38,23 @@ function FileBadge({ fileName, iconSrc }) {
     <div className="file-badge">
       <img alt="" aria-hidden="true" className="file-badge-icon" src={iconSrc} />
       <span>{fileName}</span>
+    </div>
+  );
+}
+
+function ResultsLoadingState() {
+  return (
+    <div aria-live="polite" className="loading-state" role="status">
+      <iframe
+        aria-hidden="true"
+        className="loading-iframe"
+        src={LOADING_IFRAME_SRC}
+        title="Hiệu ứng loading đối chiếu"
+      />
+      <div className="loading-copy">
+        <strong>Đang xử lý dữ liệu đối chiếu</strong>
+        <p>Hệ thống đang đọc file Excel, bóc tách PDF và chuẩn hóa dữ liệu để hiển thị bảng kết quả.</p>
+      </div>
     </div>
   );
 }
@@ -138,6 +156,7 @@ export default function CustomsCheckerApp() {
   const visibleRows = getVisibleRows(deferredRows, showOnlyErrors);
   const noticeMessage = getNoticeMessage({ errorMessage, excelFile, isSubmitting, pdfFile, result });
   const isBusy = isSubmitting || isPending;
+  const showLoadingState = isSubmitting;
 
   function updateSelectedFile(kind, file) {
     if (kind === 'excel') {
@@ -325,7 +344,9 @@ export default function CustomsCheckerApp() {
           ))}
         </div>
 
-        {result ? (
+        {showLoadingState ? (
+          <ResultsLoadingState />
+        ) : result ? (
           <>
             <div className="results-filter-bar">
               <button

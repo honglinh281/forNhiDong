@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import CustomsCheckerApp from '@/components/customs-checker-app';
@@ -153,5 +153,53 @@ describe('CustomsCheckerApp', () => {
     expect(screen.queryByText('85044090')).not.toBeInTheDocument();
     expect(screen.getByText('84713020')).toBeInTheDocument();
     expect(screen.queryByText('Không đọc được')).not.toBeInTheDocument();
+  });
+
+  it('shows the loading animation in the results area while comparing files', async () => {
+    const user = userEvent.setup();
+    let resolveFetch;
+
+    global.fetch = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+
+    render(<CustomsCheckerApp />);
+
+    await user.upload(
+      screen.getByLabelText('File Excel chuẩn'),
+      new File(['demo'], 'hang-hoa.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+    );
+    await user.upload(screen.getByLabelText('File PDF tờ khai'), new File(['demo'], 'to-khai.pdf', { type: 'application/pdf' }));
+    await user.click(screen.getByRole('button', { name: 'Bắt đầu đối chiếu' }));
+
+    expect(await screen.findByTitle('Hiệu ứng loading đối chiếu')).toBeInTheDocument();
+    expect(screen.getByText('Đang xử lý dữ liệu đối chiếu')).toBeInTheDocument();
+
+    resolveFetch({
+      ok: true,
+      json: async () => ({
+        summary: {
+          totalRows: 0,
+          matchCount: 0,
+          mismatchCount: 0,
+          missingInExcelCount: 0,
+          missingInPdfCount: 0,
+          duplicateCount: 0,
+          parseErrorCount: 0,
+          errorCount: 0
+        },
+        parserWarnings: [],
+        rows: []
+      })
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTitle('Hiệu ứng loading đối chiếu')).not.toBeInTheDocument();
+    });
   });
 });
