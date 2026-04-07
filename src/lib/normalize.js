@@ -34,20 +34,31 @@ export function normalizeUnitKey(value) {
   return stripDiacritics(normalizeText(value)).replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+function normalizeUnitCompactKey(value) {
+  return stripDiacritics(normalizeText(value)).replace(/[^a-z0-9]+/g, '');
+}
+
 const UNIT_LOOKUP = new Map(
   Object.entries(UNIT_NORMALIZATION_GROUPS).flatMap(([canonical, aliases]) =>
     aliases.map((alias) => [normalizeUnitKey(alias), canonical])
   )
 );
 
+const UNIT_LOOKUP_COMPACT = new Map(
+  Object.entries(UNIT_NORMALIZATION_GROUPS).flatMap(([canonical, aliases]) =>
+    aliases.map((alias) => [normalizeUnitCompactKey(alias), canonical])
+  )
+);
+
 export function normalizeUnit(value) {
   const key = normalizeUnitKey(value);
+  const compactKey = normalizeUnitCompactKey(value);
 
   if (!key) {
     return '';
   }
 
-  return UNIT_LOOKUP.get(key) ?? key;
+  return UNIT_LOOKUP.get(key) ?? UNIT_LOOKUP_COMPACT.get(compactKey) ?? key;
 }
 
 function trimTrailingZeros(value) {

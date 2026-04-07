@@ -8,6 +8,8 @@ import {
 } from '@/lib/constants';
 import { stripDiacritics } from '@/lib/normalize';
 
+const NEAR_MATCH_NAME_THRESHOLD = 0.9;
+
 function buildRowReference(row) {
   return row
     ? {
@@ -202,44 +204,12 @@ function isMatchableRow(row) {
   return (row?.issues?.length ?? 0) === 0;
 }
 
-function getSignature(row) {
-  return `${row.normalized.quantity}::${row.normalized.unit}`;
-}
-
-function buildSignatureIndex(rows) {
-  const index = new Map();
-
-  for (const row of rows) {
-    const signature = getSignature(row);
-    const group = index.get(signature) ?? [];
-    group.push(row);
-    index.set(signature, group);
-  }
-
-  return index;
-}
-
-function buildCandidatePool(excelRow, pdfRows, pdfRowsBySignature, config) {
-  const maxWithoutQuantity = config.weights.itemName + config.weights.unit;
-  const maxWithoutUnit = config.weights.itemName + config.weights.quantity;
-  const mustMatchQuantity = config.threshold > maxWithoutQuantity;
-  const mustMatchUnit = config.threshold > maxWithoutUnit;
-
-  if (!mustMatchQuantity && !mustMatchUnit) {
-    return pdfRows;
-  }
-
-  return pdfRowsBySignature.get(getSignature(excelRow)) ?? [];
-}
-
 function buildCandidateMatrix(excelRows, pdfRows, config) {
-  const pdfRowsBySignature = buildSignatureIndex(pdfRows);
   const candidates = [];
-  const bestScoreByExcelId = new Map();
-  const bestScoreByPdfId = new Map();
+  const nearCandidates = [];
 
   for (const excelRow of excelRows) {
-    const candidatePool = buildCandidatePool(excelRow, pdfRows, pdfRowsBySignature, config);
+    const candidatePool = pdfRows;
 
     for (const pdfRow of candidatePool) {
       const breakdown = buildScoreBreakdown(excelRow, pdfRow, config.weights);
@@ -250,18 +220,13 @@ function buildCandidateMatrix(excelRows, pdfRows, config) {
         breakdown
       };
 
-      const currentBestExcel = bestScoreByExcelId.get(excelRow.id);
-      if (!currentBestExcel || currentBestExcel.score < candidate.score) {
-        bestScoreByExcelId.set(excelRow.id, candidate);
-      }
-
-      const currentBestPdf = bestScoreByPdfId.get(pdfRow.id);
-      if (!currentBestPdf || currentBestPdf.score < candidate.score) {
-        bestScoreByPdfId.set(pdfRow.id, candidate);
-      }
-
       if (candidate.score >= config.threshold) {
         candidates.push(candidate);
+      } else if (
+        breakdown.itemNameSimilarity >= NEAR_MATCH_NAME_THRESHOLD &&
+        (breakdown.quantityMatch || breakdown.unitMatch)
+      ) {
+        nearCandidates.push(candidate);
       }
     }
   }
@@ -283,10 +248,26 @@ function buildCandidateMatrix(excelRows, pdfRows, config) {
     return (left.excelRow.rowNumber ?? Number.MAX_SAFE_INTEGER) - (right.excelRow.rowNumber ?? Number.MAX_SAFE_INTEGER);
   });
 
+  nearCandidates.sort((left, right) => {
+    if (right.breakdown.itemNameSimilarity !== left.breakdown.itemNameSimilarity) {
+      return right.breakdown.itemNameSimilarity - left.breakdown.itemNameSimilarity;
+    }
+
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+
+    const pdfDelta = (left.pdfRow.rowNumber ?? Number.MAX_SAFE_INTEGER) - (right.pdfRow.rowNumber ?? Number.MAX_SAFE_INTEGER);
+    if (pdfDelta !== 0) {
+      return pdfDelta;
+    }
+
+    return (left.excelRow.rowNumber ?? Number.MAX_SAFE_INTEGER) - (right.excelRow.rowNumber ?? Number.MAX_SAFE_INTEGER);
+  });
+
   return {
     candidates,
-    bestScoreByExcelId,
-    bestScoreByPdfId
+    nearCandidates
   };
 }
 
@@ -330,12 +311,8 @@ function findHsRule(excelHsCode, pdfHsCode, rules) {
   );
 }
 
-function buildMissingReason(targetLabel, row, bestCandidate, threshold) {
-  if (!bestCandidate) {
-    return `Không tìm thấy dòng ${targetLabel} có cùng số lượng và đơn vị tính cho "${row.raw.itemName}".`;
-  }
-
-  return `Không tìm thấy dòng ${targetLabel} đủ tương đồng cho "${row.raw.itemName}" (điểm cao nhất ${bestCandidate.score}/${threshold}).`;
+function buildMissingReason(targetLabel, row) {
+  return `Không tìm thấy dòng ${targetLabel} tương ứng cho "${row.raw.itemName}".`;
 }
 
 function buildMatchedRow(candidate, config) {
@@ -509,10 +486,21 @@ export function compareDeclarations(excelRows, pdfRows, options = {}) {
     );
   }
 
-  const { candidates, bestScoreByExcelId, bestScoreByPdfId } = buildCandidateMatrix(validExcelRows, validPdfRows, config);
+  const { candidates, nearCandidates } = buildCandidateMatrix(validExcelRows, validPdfRows, config);
   const { matches, usedExcelIds, usedPdfIds } = assignMatches(candidates);
+  const nearMatchAssignment = assignMatches(
+    nearCandidates.filter(
+      (candidate) => !usedExcelIds.has(candidate.excelRow.id) && !usedPdfIds.has(candidate.pdfRow.id)
+    )
+  );
 
   for (const candidate of matches) {
+    rows.push(buildMatchedRow(candidate, config));
+  }
+
+  for (const candidate of nearMatchAssignment.matches) {
+    usedExcelIds.add(candidate.excelRow.id);
+    usedPdfIds.add(candidate.pdfRow.id);
     rows.push(buildMatchedRow(candidate, config));
   }
 
@@ -526,7 +514,7 @@ export function compareDeclarations(excelRows, pdfRows, options = {}) {
         status: ROW_STATUS.MISSING_IN_PDF,
         pdfRow: null,
         excelRow,
-        reason: buildMissingReason('PDF', excelRow, bestScoreByExcelId.get(excelRow.id), config.threshold)
+        reason: buildMissingReason('PDF', excelRow)
       })
     );
   }
@@ -541,7 +529,7 @@ export function compareDeclarations(excelRows, pdfRows, options = {}) {
         status: ROW_STATUS.MISSING_IN_EXCEL,
         pdfRow,
         excelRow: null,
-        reason: buildMissingReason('Excel', pdfRow, bestScoreByPdfId.get(pdfRow.id), config.threshold)
+        reason: buildMissingReason('Excel', pdfRow)
       })
     );
   }

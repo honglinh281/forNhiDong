@@ -23,6 +23,7 @@ describe('normalize helpers', () => {
     expect(normalizeUnit('PAIRS')).toBe('pair');
     expect(normalizeUnit('KGM')).toBe('kilogram_net');
     expect(normalizeUnit('KGS N.W.')).toBe('kilogram_net');
+    expect(normalizeUnit('KGSN.W.')).toBe('kilogram_net');
     expect(normalizeUnit('MTR')).toBe('meter');
     expect(normalizeUnit('METERS')).toBe('meter');
     expect(normalizeUnit('MTK')).toBe('square_meter');

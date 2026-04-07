@@ -92,15 +92,25 @@ describe('compareDeclarations', () => {
     expect(rows[0].status).toBe(ROW_STATUS.MISSING_IN_PDF);
   });
 
-  it('treats quantity mismatch as two missing rows because the pair never clears the threshold', () => {
+  it('treats quantity mismatch as a mismatch row instead of two missing rows', () => {
     const { rows, summary } = compareDeclarations(
       [buildRow('excel', 2, { quantity: '10' })],
       [buildRow('pdf', 1, { quantity: '12' })]
     );
 
-    expect(rows).toHaveLength(2);
-    expect(rows.map((row) => row.status)).toEqual([ROW_STATUS.MISSING_IN_EXCEL, ROW_STATUS.MISSING_IN_PDF]);
-    expect(summary.errorCount).toBe(2);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe(ROW_STATUS.MISMATCH);
+    expect(rows[0].reason).toBe('Sai lệch tại: Số lượng.');
+    expect(rows[0].fields.quantity.status).toBe('mismatch');
+    expect(summary.mismatchCount).toBe(1);
+    expect(summary.errorCount).toBe(1);
+  });
+
+  it('uses a neutral message for truly missing rows without showing score details', () => {
+    const { rows } = compareDeclarations([buildRow('excel', 2, { itemName: 'Excel only row' })], []);
+
+    expect(rows[0].status).toBe(ROW_STATUS.MISSING_IN_PDF);
+    expect(rows[0].reason).toBe('Không tìm thấy dòng PDF tương ứng cho "Excel only row".');
   });
 
   it('sorts rows by status priority and then by pdf order within the same status group', () => {
