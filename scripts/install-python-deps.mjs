@@ -9,6 +9,7 @@ const PROJECT_ROOT = path.resolve(SCRIPT_DIR, '..');
 const REQUIREMENTS_PATH = path.join(PROJECT_ROOT, 'requirements.txt');
 const PYTHON_PACKAGES_DIR = path.join(PROJECT_ROOT, '.python-packages');
 const STAMP_PATH = path.join(PYTHON_PACKAGES_DIR, '.requirements.hash');
+const PDFMINER_INIT_PATH = path.join(PYTHON_PACKAGES_DIR, 'pdfminer', '__init__.py');
 
 const PYTHON_CANDIDATES = [process.env.PYTHON, 'python3', 'python'].filter(Boolean);
 
@@ -22,6 +23,17 @@ async function readCurrentStamp() {
   } catch {
     return '';
   }
+}
+
+async function ensurePdfMinerCompatibilityShim() {
+  try {
+    const currentContent = await readFile(PDFMINER_INIT_PATH, 'utf8');
+    const shim = '\nfrom . import pdfexceptions, settings\n';
+
+    if (!currentContent.includes('from . import pdfexceptions, settings')) {
+      await writeFile(PDFMINER_INIT_PATH, `${currentContent.trimEnd()}${shim}`, 'utf8');
+    }
+  } catch {}
 }
 
 function runCommand(command, args, options = {}) {
@@ -63,6 +75,7 @@ async function installDependencies() {
   const currentStamp = await readCurrentStamp();
 
   if (currentStamp === nextStamp) {
+    await ensurePdfMinerCompatibilityShim();
     console.log('Python dependencies are already up to date.');
     return;
   }
@@ -94,6 +107,7 @@ async function installDependencies() {
   );
 
   await writeFile(STAMP_PATH, nextStamp, 'utf8');
+  await ensurePdfMinerCompatibilityShim();
   console.log('Installed Python dependencies for PDF parsing.');
 }
 

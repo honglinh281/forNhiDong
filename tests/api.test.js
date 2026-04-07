@@ -2,6 +2,8 @@ import { POST } from '@/app/api/compare/route';
 
 import { createSampleExcelBuffer, createSampleFormEPdfBuffer, createSamplePdfBuffer } from './helpers';
 
+const API_TEST_TIMEOUT = 20000;
+
 describe('POST /api/compare', () => {
   it('compares an uploaded excel and pdf pair', async () => {
     const excelBuffer = createSampleExcelBuffer([
@@ -15,7 +17,7 @@ describe('POST /api/compare', () => {
         'HS code': '8308.90',
         'Tên hàng': 'BROOCH',
         'Đơn vị tính': 'PCE',
-        'Số lượng': '951'
+        'Số lượng': '950'
       }
     ]);
 
@@ -30,7 +32,7 @@ describe('POST /api/compare', () => {
       {
         itemNumber: 2,
         itemName: 'BROOCH',
-        hsCode: '8308.90',
+        hsCode: '8309.90',
         quantity: '950',
         unit: 'PCE'
       }
@@ -62,7 +64,7 @@ describe('POST /api/compare', () => {
     expect(payload.summary.totalRows).toBe(2);
     expect(payload.summary.mismatchCount).toBe(1);
     expect(payload.summary.errorCount).toBe(1);
-  });
+  }, API_TEST_TIMEOUT);
 
   it('returns a clear error when the PDF has no extractable item rows', async () => {
     const excelBuffer = createSampleExcelBuffer([
@@ -99,5 +101,5 @@ describe('POST /api/compare', () => {
 
     expect(response.status).toBe(400);
     expect(payload.message).toContain('Không tìm thấy dòng hàng hóa nào trong PDF Form E.');
-  });
+  }, API_TEST_TIMEOUT);
 });

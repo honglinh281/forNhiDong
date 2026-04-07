@@ -17,91 +17,119 @@ function buildRow(source, rowNumber, overrides) {
 }
 
 describe('compareDeclarations', () => {
-  it('marks a perfect match', () => {
-    const { rows, summary } = compareDeclarations([buildRow('excel', 2, {})], [buildRow('pdf', 1, {})]);
+  it('marks a perfect match even when rows are paired by fuzzy logic instead of HS key', () => {
+    const { rows, summary } = compareDeclarations(
+      [buildRow('excel', 2, { hsCode: '11111111' })],
+      [buildRow('pdf', 1, { hsCode: '11111111' })]
+    );
 
     expect(rows[0].status).toBe(ROW_STATUS.MATCH);
+    expect(rows[0].matchScore).toBe(100);
     expect(summary.matchCount).toBe(1);
   });
 
   it('treats Excel abbreviations and PDF full unit names as the same unit', () => {
     const { rows } = compareDeclarations(
-      [buildRow('excel', 2, { unit: 'PCE' })],
-      [buildRow('pdf', 1, { unit: 'PIECES' })]
+      [buildRow('excel', 2, { unit: 'PCE', hsCode: '621143' })],
+      [buildRow('pdf', 1, { unit: 'PIECES', hsCode: '621143' })]
     );
 
     expect(rows[0].status).toBe(ROW_STATUS.MATCH);
     expect(rows[0].fields.unit.status).toBe('match');
   });
 
-  it('matches KGM in Excel with KGS N.W. in PDF', () => {
-    const { rows } = compareDeclarations(
-      [buildRow('excel', 2, { unit: 'KGM' })],
-      [buildRow('pdf', 1, { unit: 'KGS N.W.' })]
+  it('allows configured HS mapping rules after a successful fuzzy match', () => {
+    const { rows, summary } = compareDeclarations(
+      [buildRow('excel', 2, { hsCode: '853649', itemName: 'Relay control module' })],
+      [buildRow('pdf', 1, { hsCode: '853690', itemName: 'Relay control module' })],
+      {
+        hsCodeMappingRules: [
+          {
+            excel: '853649',
+            pdf: '853690',
+            description: 'Rule lách HS đã được nghiệp vụ phê duyệt'
+          }
+        ]
+      }
     );
 
-    expect(rows[0].status).toBe(ROW_STATUS.MATCH);
-    expect(rows[0].fields.unit.status).toBe('match');
+    expect(rows[0].status).toBe(ROW_STATUS.MATCH_WITH_HS_RULE);
+    expect(rows[0].fields.hsCode.status).toBe('rule-match');
+    expect(summary.matchCount).toBe(1);
+    expect(summary.matchWithHsRuleCount).toBe(1);
   });
 
-  it('marks mismatch when quantity differs', () => {
+  it('flags HS code mismatch after pairing on item name, quantity and unit', () => {
     const { rows } = compareDeclarations(
-      [buildRow('excel', 2, { quantity: '10' })],
-      [buildRow('pdf', 1, { quantity: '12' })]
+      [buildRow('excel', 2, { hsCode: '85044090', itemName: 'Adapter 65W USB-C' })],
+      [buildRow('pdf', 1, { hsCode: '392610', itemName: 'Adapter 65W USB C' })]
     );
 
     expect(rows[0].status).toBe(ROW_STATUS.MISMATCH);
-    expect(rows[0].fields.quantity.status).toBe('mismatch');
+    expect(rows[0].reason).toBe('Sai lệch tại: HS code.');
+    expect(rows[0].fields.hsCode.status).toBe('mismatch');
   });
 
-  it('marks missing rows in excel', () => {
+  it('does not treat missing HS code as a parse error if the row can still be paired', () => {
+    const { rows } = compareDeclarations(
+      [buildRow('excel', 2, { hsCode: '' })],
+      [buildRow('pdf', 1, { hsCode: '84713020' })]
+    );
+
+    expect(rows[0].status).toBe(ROW_STATUS.MISMATCH);
+    expect(rows[0].reason).toBe('Sai lệch tại: HS code.');
+  });
+
+  it('marks missing rows in excel when no PDF line reaches the threshold', () => {
     const { rows } = compareDeclarations([], [buildRow('pdf', 1, {})]);
 
     expect(rows[0].status).toBe(ROW_STATUS.MISSING_IN_EXCEL);
   });
 
-  it('marks missing rows in pdf', () => {
+  it('marks missing rows in pdf when no PDF line reaches the threshold', () => {
     const { rows } = compareDeclarations([buildRow('excel', 2, {})], []);
 
     expect(rows[0].status).toBe(ROW_STATUS.MISSING_IN_PDF);
   });
 
-  it('marks duplicated hs codes', () => {
-    const excelRows = [buildRow('excel', 50, {}), buildRow('excel', 51, {})];
-    const pdfRows = [buildRow('pdf', 49, {})];
-    const { rows, summary } = compareDeclarations(excelRows, pdfRows);
+  it('treats quantity mismatch as two missing rows because the pair never clears the threshold', () => {
+    const { rows, summary } = compareDeclarations(
+      [buildRow('excel', 2, { quantity: '10' })],
+      [buildRow('pdf', 1, { quantity: '12' })]
+    );
 
-    expect(rows[0].status).toBe(ROW_STATUS.DUPLICATE_HSCODE);
-    expect(rows[0].reason).toContain('HS code 84713020 bị trùng');
-    expect(summary.duplicateCount).toBe(1);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.status)).toEqual([ROW_STATUS.MISSING_IN_EXCEL, ROW_STATUS.MISSING_IN_PDF]);
+    expect(summary.errorCount).toBe(2);
   });
 
-  it('sorts rows by pdf order before excel-only rows', () => {
+  it('sorts rows by status priority and then by pdf order within the same status group', () => {
     const excelRows = [
-      buildRow('excel', 10, { hsCode: '85044090', itemName: 'Bo sac laptop' }),
-      buildRow('excel', 12, { hsCode: '392610', itemName: 'Lanyard' }),
-      buildRow('excel', 13, { hsCode: '392610', itemName: 'Lanyard 2' }),
-      buildRow('excel', 20, { hsCode: '999999', itemName: 'Excel only row' })
+      buildRow('excel', 10, { itemName: 'Adapter 65W USB-C', hsCode: '85044090' }),
+      buildRow('excel', 12, { itemName: 'Cable marker', hsCode: '392610' }),
+      buildRow('excel', 20, { itemName: 'Excel only row', hsCode: '999999' })
     ];
     const pdfRows = [
-      buildRow('pdf', 49, { hsCode: '392610', itemName: 'Lanyard' }),
-      buildRow('pdf', 3, { hsCode: '85044090', itemName: 'Bo sac laptop', quantity: '12' })
+      buildRow('pdf', 49, { itemName: 'Cable marker', hsCode: '123456' }),
+      buildRow('pdf', 3, { itemName: 'Adapter 65W USB C', hsCode: '392610' })
     ];
+
     const { rows } = compareDeclarations(excelRows, pdfRows);
 
-    expect(rows.map((row) => row.pdf?.rowNumber ?? null)).toEqual([3, 49, null]);
-    expect(rows[0].status).toBe(ROW_STATUS.MISMATCH);
-    expect(rows[1].status).toBe(ROW_STATUS.DUPLICATE_HSCODE);
-    expect(rows[2].status).toBe(ROW_STATUS.MISSING_IN_PDF);
+    expect(rows.map((row) => [row.status, row.pdf?.rowNumber ?? null])).toEqual([
+      [ROW_STATUS.MISMATCH, 3],
+      [ROW_STATUS.MISMATCH, 49],
+      [ROW_STATUS.MISSING_IN_PDF, null]
+    ]);
   });
 
-  it('marks parse errors when a row is missing required data', () => {
+  it('marks parse errors when a row is missing a required matching field', () => {
     const { rows } = compareDeclarations(
-      [buildRow('excel', 2, {})],
-      [buildRow('pdf', 1, { hsCode: '' })]
+      [buildRow('excel', 2, { itemName: '' })],
+      [buildRow('pdf', 1, {})]
     );
 
     expect(rows[0].status).toBe(ROW_STATUS.PARSE_ERROR);
-    expect(rows[0].reason).toContain('Thiếu hoặc không đọc được HS code.');
+    expect(rows[0].reason).toContain('Thiếu tên hàng.');
   });
 });

@@ -23,10 +23,6 @@ export function createDeclarationRow(source, values, rowNumber, meta = {}) {
 
   const issues = [];
 
-  if (!normalized.hsCode) {
-    issues.push(buildIssue('hsCode', 'MISSING_HSCODE', 'Thiếu hoặc không đọc được HS code.'));
-  }
-
   if (!raw.itemName.trim()) {
     issues.push(buildIssue('itemName', 'MISSING_ITEM_NAME', 'Thiếu tên hàng.'));
   }
@@ -42,7 +38,7 @@ export function createDeclarationRow(source, values, rowNumber, meta = {}) {
   }
 
   return {
-    id: `${source}-${rowNumber}-${normalized.hsCode || 'unmapped'}`,
+    id: `${source}-${rowNumber}-${normalized.hsCode || normalized.itemName || 'unmapped'}`,
     source,
     rowNumber,
     raw,

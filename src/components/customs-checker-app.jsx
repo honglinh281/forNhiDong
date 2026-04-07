@@ -115,7 +115,7 @@ function getVisibleRows(rows, showOnlyErrors) {
     return rows;
   }
 
-  return rows.filter((row) => row.status === ROW_STATUS.MISMATCH);
+  return rows.filter((row) => row.status !== ROW_STATUS.MATCH && row.status !== ROW_STATUS.MATCH_WITH_HS_RULE);
 }
 
 function getNoticeMessage({ errorMessage, excelFile, isSubmitting, pdfFile, result }) {
@@ -262,7 +262,7 @@ export default function CustomsCheckerApp() {
     {
       label: 'Sai lệch',
       tone: 'warning',
-      value: result ? result.summary.mismatchCount : '--'
+      value: result ? result.summary.errorCount : '--'
     }
   ];
 
@@ -352,11 +352,11 @@ export default function CustomsCheckerApp() {
               <button
                 aria-pressed={showOnlyErrors}
                 className={`filter-chip ${showOnlyErrors ? 'is-active' : ''}`}
-                disabled={result.summary.mismatchCount === 0}
+                disabled={result.summary.errorCount === 0}
                 onClick={() => setShowOnlyErrors((current) => !current)}
                 type="button"
               >
-                {showOnlyErrors ? 'Đang hiển thị dòng lỗi' : 'Hiển thị sai lệch'}
+                {showOnlyErrors ? 'Đang hiển thị dòng cần kiểm tra' : 'Hiển thị sai lệch'}
               </button>
             </div>
 
@@ -400,7 +400,7 @@ export default function CustomsCheckerApp() {
                       </td>
                       <td>
                         <div className="hs-block">
-                          <strong>{row.hsCode || 'Không đọc được'}</strong>
+                          <ComparisonCell field={row.fields.hsCode} />
                           <div className="hs-meta">
                             <span>PDF: Dòng {row.pdf?.rowNumber ?? '-'}</span>
                             <span>Excel: Dòng {row.excel?.rowNumber ?? '-'}</span>

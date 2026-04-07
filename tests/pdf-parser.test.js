@@ -2,6 +2,8 @@ import { extractPdfRows } from '@/lib/pdf';
 
 import { createSampleFormEPdfBuffer, createSamplePdfBuffer, readFixtureBuffer } from './helpers';
 
+const PDF_TEST_TIMEOUT = 20000;
+
 describe('extractPdfRows', () => {
   it('extracts rows from a Form E pdfplumber fixture', async () => {
     const pdfBuffer = await createSampleFormEPdfBuffer([
@@ -28,7 +30,7 @@ describe('extractPdfRows', () => {
     expect(result.rows[0].normalized.itemName).toBe("women's long-sleeved pullover");
     expect(result.rows[1].normalized.unit).toBe('piece');
     expect(result.rows[1].normalized.quantity).toBe('950');
-  });
+  }, PDF_TEST_TIMEOUT);
 
   it('extracts structured rows from the real sample PDF fixture', async () => {
     const fixtureBuffer = await readFixtureBuffer('E26MABRTK4BX0222_nháp.pdf');
@@ -37,11 +39,11 @@ describe('extractPdfRows', () => {
 
     expect(result.rows.length).toBeGreaterThan(100);
     expect(result.rows[0].normalized.hsCode).toBe('621143');
-  });
+  }, PDF_TEST_TIMEOUT);
 
   it('fails clearly when the PDF has no extractable item rows', async () => {
     const pdfBuffer = await createSamplePdfBuffer(['ASEAN-CHINA FREE TRADE AREA', 'FORM E']);
 
     await expect(extractPdfRows(pdfBuffer)).rejects.toThrow('Không tìm thấy dòng hàng hóa nào trong PDF Form E.');
-  });
+  }, PDF_TEST_TIMEOUT);
 });

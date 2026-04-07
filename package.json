@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/install-python-deps.mjs && next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 node scripts/install-python-deps.mjs && NEXT_TELEMETRY_DISABLED=1 next dev --webpack",
+    "build": "NEXT_TELEMETRY_DISABLED=1 next build --webpack",
+    "start": "NEXT_TELEMETRY_DISABLED=1 next start",
     "test": "node scripts/install-python-deps.mjs && vitest run",
     "test:watch": "vitest"
   },

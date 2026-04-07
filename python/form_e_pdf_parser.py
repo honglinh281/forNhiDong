@@ -5,7 +5,7 @@ import pdfplumber
 
 
 HS_SPLIT = re.compile(r"HS\s*CODE\s*:\s*([0-9.]+)", re.IGNORECASE)
-QTY_UNIT = re.compile(r"^(?P<quantity>[0-9][0-9,\.]*)\s*(?P<unit>[A-Z]{2,15})(?:\b.*)?$")
+QTY_UNIT = re.compile(r"^(?P<quantity>[0-9][0-9,.\-]*)\s*(?P<unit>[A-Z0-9./-]{2,20})(?:\b.*)?$", re.IGNORECASE)
 
 
 def clean_lines(text):
@@ -26,14 +26,37 @@ def get_item_table(page):
 
 
 def parse_quantity_token(token):
-    normalized = " ".join((token or "").strip().split())
-    match = QTY_UNIT.search(normalized)
+    compact = re.sub(r"\s+", "", (token or "").strip())
+
+    if not compact:
+        return {
+            "quantity": "",
+            "unit": "",
+        }
+
+    match = QTY_UNIT.search(compact)
+
+    if not match:
+        split_match = re.match(
+            r"^(?P<quantity>[0-9][0-9,.\-]*)(?P<unit>[A-Z0-9./-]{2,20})$",
+            compact,
+            re.IGNORECASE,
+        )
+        match = split_match
+
     if not match:
         return {
             "quantity": token or "",
             "unit": "",
         }
-    return match.groupdict()
+
+    quantity = match.group("quantity")
+    unit = match.group("unit")
+
+    return {
+        "quantity": quantity,
+        "unit": unit,
+    }
 
 
 def normalize_inline_text(text):
@@ -135,4 +158,3 @@ def parse_form_e(path):
         "rows": rows,
         "warnings": warnings,
     }
-

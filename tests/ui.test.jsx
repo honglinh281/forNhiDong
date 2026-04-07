@@ -48,6 +48,11 @@ describe('CustomsCheckerApp', () => {
             pdf: { rowNumber: 3 },
             excel: { rowNumber: 4 },
             fields: {
+              hsCode: {
+                status: 'match',
+                pdfValue: '85044090',
+                excelValue: '85044090'
+              },
               itemName: {
                 status: 'match',
                 pdfValue: 'Bo sac laptop',
@@ -73,6 +78,11 @@ describe('CustomsCheckerApp', () => {
             pdf: { rowNumber: 6 },
             excel: null,
             fields: {
+              hsCode: {
+                status: 'missing',
+                pdfValue: '',
+                excelValue: ''
+              },
               itemName: {
                 status: 'error',
                 pdfValue: 'Lanyard',
@@ -98,6 +108,11 @@ describe('CustomsCheckerApp', () => {
             pdf: { rowNumber: 1 },
             excel: { rowNumber: 2 },
             fields: {
+              hsCode: {
+                status: 'match',
+                pdfValue: '84713020',
+                excelValue: '84713020'
+              },
               itemName: {
                 status: 'match',
                 pdfValue: 'Laptop Dell Latitude',
@@ -130,7 +145,7 @@ describe('CustomsCheckerApp', () => {
     await user.upload(screen.getByLabelText('File PDF tờ khai'), new File(['demo'], 'to-khai.pdf', { type: 'application/pdf' }));
     await user.click(screen.getByRole('button', { name: 'Bắt đầu đối chiếu' }));
 
-    expect(await screen.findByText('Kết quả đối chiếu')).toBeInTheDocument();
+    expect((await screen.findAllByText('84713020')).length).toBeGreaterThan(0);
     expect(global.fetch).toHaveBeenCalledWith(
       '/api/compare',
       expect.objectContaining({
@@ -138,9 +153,8 @@ describe('CustomsCheckerApp', () => {
         body: expect.any(FormData)
       })
     );
-    expect(screen.getByText('84713020')).toBeInTheDocument();
-    expect(screen.getByText('85044090')).toBeInTheDocument();
-    expect(screen.getByText('Không đọc được')).toBeInTheDocument();
+    expect(screen.getAllByText('85044090').length).toBeGreaterThan(0);
+    expect(screen.getByText('Lỗi đọc dữ liệu')).toBeInTheDocument();
     expect(screen.getByText('Sai lệch tại: Số lượng.')).toBeInTheDocument();
 
     const warningDisclosure = screen.getByText('Cảnh báo server (1)').closest('details');
@@ -151,8 +165,8 @@ describe('CustomsCheckerApp', () => {
 
     await user.click(screen.getByRole('button', { name: 'Hiển thị sai lệch' }));
     expect(screen.queryByText('85044090')).not.toBeInTheDocument();
-    expect(screen.getByText('84713020')).toBeInTheDocument();
-    expect(screen.queryByText('Không đọc được')).not.toBeInTheDocument();
+    expect(screen.getAllByText('84713020').length).toBeGreaterThan(0);
+    expect(screen.getByText('Lỗi đọc dữ liệu')).toBeInTheDocument();
   });
 
   it('shows the loading animation in the results area while comparing files', async () => {

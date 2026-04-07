@@ -86,7 +86,7 @@ export async function createSampleFormEPdfBuffer(rows) {
       rows.map((row) => `${row.itemName} HS CODE : ${row.hsCode}`).join('\n'),
       rows.map((row) => row.origin ?? 'WO').join('\n'),
       rows.map((row) => row.origin ?? 'CN').join('\n'),
-      rows.map((row) => `${row.quantity} ${row.unit}`).join('\n')
+      rows.map((row) => row.quantityToken ?? `${row.quantity} ${row.unit}`).join('\n')
     ]
   ];
 

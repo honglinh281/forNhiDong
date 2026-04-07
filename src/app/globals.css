@@ -513,6 +513,11 @@ tbody tr.is-alt-row {
   color: var(--success-ink);
 }
 
+.status-match_with_hs_rule {
+  background: rgba(238, 246, 239, 0.9);
+  color: var(--success-ink);
+}
+
 .status-mismatch,
 .status-missing_in_excel,
 .status-missing_in_pdf {
@@ -520,7 +525,6 @@ tbody tr.is-alt-row {
   color: var(--warning-ink);
 }
 
-.status-duplicate_hscode,
 .status-parse_error {
   background: var(--danger-bg);
   color: var(--danger-ink);
@@ -572,7 +576,8 @@ tbody tr.is-alt-row {
 
 .field-mismatch,
 .field-missing,
-.field-error {
+.field-error,
+.field-rule-match {
   padding: 10px 12px;
   border-radius: 12px;
 }
@@ -584,6 +589,10 @@ tbody tr.is-alt-row {
 
 .field-error {
   background: rgba(248, 221, 221, 0.88);
+}
+
+.field-rule-match {
+  background: rgba(238, 246, 239, 0.82);
 }
 
 .row-reason {
