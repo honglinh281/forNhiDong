@@ -82,6 +82,22 @@ function getNoRowsMessage(payload) {
   return 'Không tìm thấy dòng hàng hóa nào trong PDF Form E. Phase hiện tại chỉ hỗ trợ PDF có dữ liệu text/vector trích xuất được.';
 }
 
+function normalizeSequenceKey(value, fallbackValue) {
+  const raw = String(value ?? '').trim();
+
+  if (!raw) {
+    return String(fallbackValue);
+  }
+
+  const compact = raw.replace(/\s+/g, '');
+
+  if (/^\d+(?:\.0+)?$/u.test(compact)) {
+    return String(Number(compact));
+  }
+
+  return compact.toLowerCase();
+}
+
 export function mapPdfPlumberPayloadToResult(payload, extraWarnings = []) {
   if (payload?.error) {
     throw new Error(payload.error);
@@ -106,7 +122,9 @@ export function mapPdfPlumberPayloadToResult(payload, extraWarnings = []) {
           extractionMethod: 'pdfplumber-form-e',
           pageNumber: row.pageNumber,
           itemNumber: row.itemNumber,
-          origin: row.origin
+          origin: row.origin,
+          orderIndex: index + 1,
+          sequenceKey: normalizeSequenceKey(row.itemNumber, index + 1)
         }
       )
     ),

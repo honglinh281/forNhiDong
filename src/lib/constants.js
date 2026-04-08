@@ -27,6 +27,10 @@ export const FIELD_ALIASES = {
   quantity: ['so luong', 'số lượng', 'luong', 'lượng', 'quantity', 'qty', 'sl', 'amount']
 };
 
+export const OPTIONAL_FIELD_ALIASES = {
+  sequenceKey: ['stt', 'số thứ tự', 'so thu tu', 'item no', 'item no.', 'item number', 'no', 'no.']
+};
+
 export const UNIT_NORMALIZATION_GROUPS = {
   // Synced from "Dịch nghĩa viết tắt (1).xlsx"
   piece: ['pce', 'piece', 'pieces', 'piece/pieces'],

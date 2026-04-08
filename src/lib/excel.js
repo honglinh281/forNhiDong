@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 
-import { FIELD_ALIASES, REQUIRED_FIELDS } from '@/lib/constants';
+import { FIELD_ALIASES, OPTIONAL_FIELD_ALIASES, REQUIRED_FIELDS } from '@/lib/constants';
 import { createDeclarationRow } from '@/lib/declaration';
 import { normalizeHeader } from '@/lib/normalize';
 
@@ -21,7 +21,7 @@ function rowHasContent(row) {
 }
 
 function getBestMatchingIndex(normalizedCells, field) {
-  const aliases = FIELD_ALIASES[field];
+  const aliases = FIELD_ALIASES[field] ?? OPTIONAL_FIELD_ALIASES[field] ?? [];
   let bestMatch = { index: -1, score: 0 };
 
   normalizedCells.forEach((cell, index) => {
@@ -62,6 +62,12 @@ function findHeaderMapping(rows) {
     }
 
     if (REQUIRED_FIELDS.every((field) => Number.isInteger(mapping[field]))) {
+      const sequenceKeyIndex = getBestMatchingIndex(normalizedCells, 'sequenceKey');
+
+      if (sequenceKeyIndex >= 0) {
+        mapping.sequenceKey = sequenceKeyIndex;
+      }
+
       return {
         headerRowIndex: rowIndex,
         mapping
@@ -70,6 +76,22 @@ function findHeaderMapping(rows) {
   }
 
   return null;
+}
+
+function normalizeSequenceKey(value, fallbackValue) {
+  const raw = String(value ?? '').trim();
+
+  if (!raw) {
+    return String(fallbackValue);
+  }
+
+  const compact = raw.replace(/\s+/g, '');
+
+  if (/^\d+(?:\.0+)?$/u.test(compact)) {
+    return String(Number(compact));
+  }
+
+  return compact.toLowerCase();
 }
 
 export function extractExcelRows(bufferLike) {
@@ -107,6 +129,7 @@ export function extractExcelRows(bufferLike) {
       continue;
     }
 
+    const orderIndex = dataRows.length + 1;
     const declarationRow = createDeclarationRow(
       'excel',
       {
@@ -116,7 +139,14 @@ export function extractExcelRows(bufferLike) {
         quantity: currentRow[header.mapping.quantity]
       },
       index + 1,
-      { sheetName }
+      {
+        sheetName,
+        orderIndex,
+        sequenceKey: normalizeSequenceKey(
+          Number.isInteger(header.mapping.sequenceKey) ? currentRow[header.mapping.sequenceKey] : '',
+          orderIndex
+        )
+      }
     );
 
     dataRows.push(declarationRow);

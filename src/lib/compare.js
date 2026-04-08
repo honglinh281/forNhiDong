@@ -204,6 +204,72 @@ function isMatchableRow(row) {
   return (row?.issues?.length ?? 0) === 0;
 }
 
+function getSequenceKey(row) {
+  return row?.meta?.sequenceKey || '';
+}
+
+function buildSequenceGroups(rows) {
+  const groups = new Map();
+  const keyedRowIds = new Set();
+
+  for (const row of rows) {
+    const sequenceKey = getSequenceKey(row);
+
+    if (!sequenceKey) {
+      continue;
+    }
+
+    keyedRowIds.add(row.id);
+    const group = groups.get(sequenceKey) ?? [];
+    group.push(row);
+    groups.set(sequenceKey, group);
+  }
+
+  return {
+    groups,
+    keyedRowIds
+  };
+}
+
+function assignSequenceMatches(excelRows, pdfRows, config) {
+  const excelIndex = buildSequenceGroups(excelRows);
+  const pdfIndex = buildSequenceGroups(pdfRows);
+  const matches = [];
+  const usedExcelIds = new Set();
+  const usedPdfIds = new Set();
+  const sequenceKeys = new Set([...excelIndex.groups.keys(), ...pdfIndex.groups.keys()]);
+
+  for (const sequenceKey of sequenceKeys) {
+    const excelGroup = excelIndex.groups.get(sequenceKey) ?? [];
+    const pdfGroup = pdfIndex.groups.get(sequenceKey) ?? [];
+
+    if (excelGroup.length !== 1 || pdfGroup.length !== 1) {
+      continue;
+    }
+
+    const excelRow = excelGroup[0];
+    const pdfRow = pdfGroup[0];
+
+    matches.push({
+      excelRow,
+      pdfRow,
+      score: buildScoreBreakdown(excelRow, pdfRow, config.weights).total,
+      breakdown: buildScoreBreakdown(excelRow, pdfRow, config.weights),
+      matchedBy: 'sequence'
+    });
+    usedExcelIds.add(excelRow.id);
+    usedPdfIds.add(pdfRow.id);
+  }
+
+  return {
+    matches,
+    usedExcelIds,
+    usedPdfIds,
+    keyedExcelIds: excelIndex.keyedRowIds,
+    keyedPdfIds: pdfIndex.keyedRowIds
+  };
+}
+
 function buildCandidateMatrix(excelRows, pdfRows, config) {
   const candidates = [];
   const nearCandidates = [];
@@ -486,7 +552,20 @@ export function compareDeclarations(excelRows, pdfRows, options = {}) {
     );
   }
 
-  const { candidates, nearCandidates } = buildCandidateMatrix(validExcelRows, validPdfRows, config);
+  const sequenceAssignment = assignSequenceMatches(validExcelRows, validPdfRows, config);
+
+  for (const candidate of sequenceAssignment.matches) {
+    rows.push(buildMatchedRow(candidate, config));
+  }
+
+  const fuzzyExcelRows = validExcelRows.filter(
+    (row) => !sequenceAssignment.usedExcelIds.has(row.id) && !sequenceAssignment.keyedExcelIds.has(row.id)
+  );
+  const fuzzyPdfRows = validPdfRows.filter(
+    (row) => !sequenceAssignment.usedPdfIds.has(row.id) && !sequenceAssignment.keyedPdfIds.has(row.id)
+  );
+
+  const { candidates, nearCandidates } = buildCandidateMatrix(fuzzyExcelRows, fuzzyPdfRows, config);
   const { matches, usedExcelIds, usedPdfIds } = assignMatches(candidates);
   const nearMatchAssignment = assignMatches(
     nearCandidates.filter(
@@ -505,7 +584,7 @@ export function compareDeclarations(excelRows, pdfRows, options = {}) {
   }
 
   for (const excelRow of validExcelRows) {
-    if (usedExcelIds.has(excelRow.id)) {
+    if (sequenceAssignment.usedExcelIds.has(excelRow.id) || usedExcelIds.has(excelRow.id)) {
       continue;
     }
 
@@ -520,7 +599,7 @@ export function compareDeclarations(excelRows, pdfRows, options = {}) {
   }
 
   for (const pdfRow of validPdfRows) {
-    if (usedPdfIds.has(pdfRow.id)) {
+    if (sequenceAssignment.usedPdfIds.has(pdfRow.id) || usedPdfIds.has(pdfRow.id)) {
       continue;
     }
 

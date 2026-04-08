@@ -20,6 +20,7 @@ describe('extractExcelRows', () => {
     const result = extractExcelRows(workbookBuffer);
 
     expect(result.rows).toHaveLength(2);
+    expect(result.rows[0].meta.sequenceKey).toBe('1');
     expect(result.rows[0].normalized.itemName).toBe("women's long-sleeved pullover");
     expect(result.rows[0].normalized.hsCode).toBe('621143');
     expect(result.rows[0].normalized.quantity).toBe('10');

@@ -3,6 +3,8 @@ import { ROW_STATUS } from '@/lib/constants';
 import { createDeclarationRow } from '@/lib/declaration';
 
 function buildRow(source, rowNumber, overrides) {
+  const { meta = {}, ...fieldOverrides } = overrides;
+
   return createDeclarationRow(
     source,
     {
@@ -10,9 +12,10 @@ function buildRow(source, rowNumber, overrides) {
       itemName: 'Laptop Dell Latitude',
       unit: 'Cái',
       quantity: '10',
-      ...overrides
+      ...fieldOverrides
     },
-    rowNumber
+    rowNumber,
+    meta
   );
 }
 
@@ -26,6 +29,40 @@ describe('compareDeclarations', () => {
     expect(rows[0].status).toBe(ROW_STATUS.MATCH);
     expect(rows[0].matchScore).toBe(100);
     expect(summary.matchCount).toBe(1);
+  });
+
+  it('uses sequence key as the primary key when both files carry aligned STT', () => {
+    const excelRows = [
+      buildRow('excel', 2, {
+        itemName: 'Ao thun',
+        quantity: '10',
+        meta: { sequenceKey: '1' }
+      }),
+      buildRow('excel', 3, {
+        itemName: 'Quan jean',
+        quantity: '5',
+        meta: { sequenceKey: '2' }
+      })
+    ];
+    const pdfRows = [
+      buildRow('pdf', 1, {
+        itemName: 'Quan jean',
+        quantity: '10',
+        meta: { sequenceKey: '1' }
+      }),
+      buildRow('pdf', 2, {
+        itemName: 'Ao thun',
+        quantity: '5',
+        meta: { sequenceKey: '2' }
+      })
+    ];
+
+    const { rows } = compareDeclarations(excelRows, pdfRows);
+
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.status === ROW_STATUS.MISMATCH)).toBe(true);
+    expect(rows[0].pdf?.rowNumber).toBe(1);
+    expect(rows[0].excel?.rowNumber).toBe(2);
   });
 
   it('treats Excel abbreviations and PDF full unit names as the same unit', () => {
