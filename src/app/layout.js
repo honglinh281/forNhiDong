@@ -9,9 +9,9 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: "nhidong",
+  title: "Automatically checks CO Form E",
   description:
-    "Ứng dụng đối chiếu tờ khai hải quan tự động giữa PDF Form E và Excel.",
+    "Application to automatically compare customs declarations between PDF Form E and Excel.",
 };
 
 export default function RootLayout({ children }) {
