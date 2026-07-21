@@ -142,7 +142,7 @@ function getNoticeMessage({ errorMessage, excelFile, isSubmitting, pdfFile, resu
   return 'Tải lên file lên để bắt đầu đối chiếu nhé 😉';
 }
 
-export default function CustomsCheckerApp() {
+export default function CustomsCheckerApp({ embedded = false }) {
   const [excelFile, setExcelFile] = useState(null);
   const [pdfFile, setPdfFile] = useState(null);
   const [result, setResult] = useState(null);
@@ -266,8 +266,10 @@ export default function CustomsCheckerApp() {
     }
   ];
 
+  const Root = embedded ? 'div' : 'main';
+
   return (
-    <main className="checker-page">
+    <Root className={`checker-page ${embedded ? 'checker-page-embedded' : ''}`}>
       <section className={`notice-strip ${errorMessage ? 'is-error' : ''}`}>{noticeMessage}</section>
 
       <section className="content-card upload-card">
@@ -431,6 +433,6 @@ export default function CustomsCheckerApp() {
           </div>
         )}
       </section>
-    </main>
+    </Root>
   );
 }

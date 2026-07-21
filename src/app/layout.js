@@ -9,9 +9,9 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: "Automatically checks CO Form E",
+  title: "XNK Checker",
   description:
-    "Application to automatically compare customs declarations between PDF Form E and Excel.",
+    "Công cụ đối chiếu HS Code và kiểm tra tên tiếng Anh hàng hóa xuất nhập khẩu.",
 };
 
 export default function RootLayout({ children }) {
