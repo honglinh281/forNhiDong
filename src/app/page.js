@@ -1,5 +1,5 @@
-import CustomsCheckerApp from '@/components/customs-checker-app';
+import CheckerWorkspace from '@/components/checker-workspace';
 
 export default function HomePage() {
-  return <CustomsCheckerApp />;
+  return <CheckerWorkspace />;
 }
