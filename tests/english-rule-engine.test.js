@@ -12,43 +12,45 @@ function createRow(productNameVi, productNameEn) {
   };
 }
 
-function createSemantic(canonicalName, checks = {}, overrides = {}) {
+function createSemantic(canonicalName, comparison = {}, overrides = {}) {
   return {
     rowId: 'unique-check-1',
     canonicalName,
     coreProduct: canonicalName.toLowerCase(),
-    criticalAttributes: [],
-    optionalAttributes: [],
-    checks: {
-      coreProduct: 'match',
-      partWhole: 'match',
+    productClass: 'commercial product',
+    specificSubtype: null,
+    partWholeScope: 'complete_product',
+    setScope: 'single',
+    criticalQualifiers: [],
+    optionalQualifiers: [],
+    comparison: {
+      productIdentity: 'exact',
+      partWhole: 'not_applicable',
       setScope: 'not_applicable',
-      specificity: 'sufficient',
       material: 'not_applicable',
-      function: 'match',
+      function: 'equivalent',
       terminology: 'natural',
       unsupportedInfo: false,
-      ...checks
+      ...comparison
     },
-    suggestedName: null,
     confidence: 0.95,
     ...overrides
   };
 }
 
-describe('English semantic rule engine', () => {
-  it('maps a wrong core product and set scope to Sai rõ', () => {
+describe('English semantic relationship rule engine', () => {
+  it('maps a different product identity and set scope to Sai rõ', () => {
     const row = createRow('Bộ khóa cửa, gồm tay nắm và ổ khóa', 'Door handle set');
     const semantic = createSemantic('Door lock set', {
-      coreProduct: 'mismatch',
-      setScope: 'mismatch',
+      productIdentity: 'different',
+      setScope: 'different',
       terminology: 'wrong'
     });
 
     expect(mapSemanticCheckToResult(row, semantic)).toEqual({
       rowId: row.rowId,
       status: 'Sai rõ',
-      reason: 'Tên TA hiện tại mô tả sai loại hàng hóa chính.',
+      reason: 'Tên TA hiện tại mô tả một loại hàng hóa khác.',
       suggestedName: 'Door lock set'
     });
   });
@@ -60,98 +62,52 @@ describe('English semantic rule engine', () => {
     expect(mapSemanticCheckToResult(row, semantic)).toEqual({
       rowId: row.rowId,
       status: 'Chưa sát',
-      reason: 'Tên TA hiện tại quá chung, chưa thể hiện loại hàng hóa cụ thể.',
+      reason: 'Tên TA hiện tại quá rộng hoặc quá chung so với loại hàng hóa cụ thể.',
       suggestedName: 'IGBT transistor module'
     });
   });
 
-  it('keeps optional shape omissions as OK', () => {
+  it('keeps optional qualifier omissions and singular/plural differences as OK', () => {
     const row = createRow('Đồ trang trí để bàn: hình ván trượt', 'Table decorations');
     const semantic = createSemantic(
       'Table decoration',
-      { material: 'missing_but_optional' },
-      { optionalAttributes: ['skateboard-shaped'] }
+      { productIdentity: 'equivalent' },
+      { optionalQualifiers: ['skateboard-shaped'] }
     );
 
     expect(mapSemanticCheckToResult(row, semantic)).toEqual({
       rowId: row.rowId,
       status: 'OK',
-      reason: null,
-      suggestedName: null
-    });
-  });
-
-  it('maps wrong terminology and product head noun to Sai rõ', () => {
-    const row = createRow('Đầu bơm lốp, dùng ghép nối với dây hơi', 'Tire inflation valve clamp');
-    const semantic = createSemantic('Tire inflator chuck', {
-      coreProduct: 'mismatch',
-      terminology: 'wrong'
-    });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toMatchObject({
-      status: 'Sai rõ',
-      suggestedName: 'Tire inflator chuck'
-    });
-  });
-
-  it('maps a generic functional translation to Chưa sát', () => {
-    const row = createRow('Thanh nạy lốp', 'Tire removal tool');
-    const semantic = createSemantic('Tire lever', {
-      specificity: 'too_generic',
-      terminology: 'acceptable'
-    });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
-      rowId: row.rowId,
-      status: 'Chưa sát',
-      reason: 'Tên TA hiện tại quá chung, chưa thể hiện loại hàng hóa cụ thể.',
-      suggestedName: 'Tire lever'
-    });
-  });
-
-  it('maps part versus whole mismatches to Sai rõ', () => {
-    const row = createRow('Cánh bơm dùng cho máy bơm nước', 'Water pump');
-    const semantic = createSemantic('Pump impeller', { partWhole: 'mismatch' });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toMatchObject({
-      status: 'Sai rõ',
-      reason: 'Tên TA hiện tại không phản ánh đúng quan hệ linh kiện và sản phẩm hoàn chỉnh.',
-      suggestedName: 'Pump impeller'
-    });
-  });
-
-  it('blocks low-confidence semantic checks from auto-OK', () => {
-    const row = createRow('Giá đỡ máy chiếu', 'Projector stand');
-    const semantic = createSemantic('Projector stand', {}, { confidence: 0.79 });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
-      rowId: row.rowId,
-      status: 'Chưa sát',
-      reason: 'Độ tin cậy chưa đủ cao để tự động xác nhận tên hiện tại.',
-      suggestedName: null
-    });
-  });
-
-  it('treats an actual material contradiction as Sai rõ', () => {
-    const row = createRow('Túi xách tay bằng nhựa', 'Leather handbag');
-    const semantic = createSemantic('Plastic handbag', { material: 'contradiction' });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toMatchObject({
-      status: 'Sai rõ',
-      reason: 'Tên TA hiện tại mâu thuẫn với vật liệu được mô tả.',
-      suggestedName: 'Plastic handbag'
+      reason: '',
+      suggestedName: ''
     });
   });
 
   it.each([
-    ['setScope', 'Bộ dụng cụ sửa chữa', 'Repair tool', 'Repair tool set'],
-    ['function', 'Máy bơm nước', 'Air compressor', 'Water pump'],
-    ['terminology', 'Đầu nối ống khí', 'Air hose decoration', 'Air hose connector']
-  ])('treats a %s mismatch as Sai rõ', (dimension, productNameVi, productNameEn, canonicalName) => {
-    const row = createRow(productNameVi, productNameEn);
-    const semantic = createSemantic(canonicalName, {
-      [dimension]: dimension === 'terminology' ? 'wrong' : 'mismatch'
+    ['Digital camera', 'Instant digital camera'],
+    ['Circuit board', 'ESP32-S3 development board'],
+    ['audio cable', 'Optical audio cable'],
+    ['Tire removal tool', 'Tire lever']
+  ])('maps the broader real-world name %s to Chưa sát', (productNameEn, canonicalName) => {
+    const row = createRow('Mô tả tiếng Việt xác định subtype cụ thể', productNameEn);
+    const semantic = createSemantic(canonicalName, { productIdentity: 'broader' });
+
+    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
+      rowId: row.rowId,
+      status: 'Chưa sát',
+      reason: 'Tên TA hiện tại quá rộng hoặc quá chung so với loại hàng hóa cụ thể.',
+      suggestedName: canonicalName
     });
+  });
+
+  it.each([
+    ['partWhole', 'Lõi lọc dầu thủy lực', 'Oil filter', 'Hydraulic oil filter element'],
+    ['setScope', 'Bộ bàn phím kèm chuột', 'Computer keyboard', 'Keyboard and mouse set'],
+    ['material', 'Túi xách nhựa', 'Leather handbag', 'Plastic handbag'],
+    ['function', 'Máy bơm nước', 'Air compressor', 'Water pump']
+  ])('maps a %s contradiction to Sai rõ', (dimension, productNameVi, productNameEn, canonicalName) => {
+    const row = createRow(productNameVi, productNameEn);
+    const semantic = createSemantic(canonicalName, { [dimension]: 'different' });
 
     expect(mapSemanticCheckToResult(row, semantic)).toMatchObject({
       status: 'Sai rõ',
@@ -159,37 +115,90 @@ describe('English semantic rule engine', () => {
     });
   });
 
-  it('treats unsupported added information as Sai rõ', () => {
-    const row = createRow('Túi xách tay', 'Leather handbag');
-    const semantic = createSemantic('Handbag', { unsupportedInfo: true });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toMatchObject({
-      status: 'Sai rõ',
-      reason: 'Tên TA hiện tại bổ sung thông tin không có trong mô tả tiếng Việt.',
-      suggestedName: 'Handbag'
-    });
-  });
-
-  it.each([
-    [{ specificity: 'over_specific' }, 'Tên TA hiện tại cụ thể hơn thông tin có trong mô tả tiếng Việt.'],
-    [{ material: 'uncertain' }, 'Một số đặc điểm ngữ nghĩa chưa đủ rõ để xác nhận tên hiện tại.'],
-    [{ coreProduct: 'not_applicable' }, 'Tên TA hiện tại cần được đối chiếu thêm với tên thương mại chuẩn.']
-  ])('prevents a risky preliminary OK result from auto-OK', (checks, reason) => {
+  it('blocks low-confidence results from auto-OK and always supplies canonicalName', () => {
     const row = createRow('Giá đỡ máy chiếu', 'Projector stand');
-    const semantic = createSemantic('Projector stand', checks);
+    const semantic = createSemantic('Projector stand', {}, { confidence: 0.79 });
 
     expect(mapSemanticCheckToResult(row, semantic)).toEqual({
       rowId: row.rowId,
       status: 'Chưa sát',
-      reason,
-      suggestedName: null
+      reason: 'Độ tin cậy chưa đủ cao để tự động xác nhận tên hiện tại.',
+      suggestedName: 'Projector stand'
     });
   });
 
-  it('ships the documented calibration set as static source code', () => {
-    expect(ENGLISH_CHECK_FEW_SHOT_EXAMPLES).toHaveLength(10);
+  it('maps awkward but understandable terminology to Chưa sát', () => {
+    const row = createRow('Thanh nạy lốp', 'Tire removal tool');
+    const semantic = createSemantic('Tire lever', {
+      productIdentity: 'equivalent',
+      terminology: 'awkward'
+    });
+
+    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
+      rowId: row.rowId,
+      status: 'Chưa sát',
+      reason: 'Tên TA hiện tại hiểu được nhưng thuật ngữ thương mại chưa tự nhiên hoặc chưa chính xác.',
+      suggestedName: 'Tire lever'
+    });
+  });
+
+  it('maps unsupported but non-contradictory information to Chưa sát', () => {
+    const row = createRow('Túi xách tay', 'Premium handbag');
+    const semantic = createSemantic('Handbag', {
+      productIdentity: 'narrower',
+      unsupportedInfo: true
+    });
+
+    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
+      rowId: row.rowId,
+      status: 'Chưa sát',
+      reason: 'Tên TA hiện tại hẹp hoặc cụ thể hơn thông tin được hỗ trợ trong mô tả tiếng Việt.',
+      suggestedName: 'Handbag'
+    });
+  });
+
+  it('accepts a longer English description when every detail is supported', () => {
+    const row = createRow(
+      'Bộ nguồn AC-DC cấp nguồn máy kiểm tra bản mạch, vỏ nhôm, 72VDC/6.7A, 480W',
+      'AC-DC switching power supply for circuit board tester, aluminum casing, 72VDC/6.7A, 480W'
+    );
+    const semantic = createSemantic('AC-DC switching power supply', {
+      productIdentity: 'equivalent',
+      material: 'equivalent',
+      function: 'equivalent',
+      unsupportedInfo: false
+    });
+
+    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
+      rowId: row.rowId,
+      status: 'OK',
+      reason: '',
+      suggestedName: ''
+    });
+  });
+
+  it('returns non-null strings for deterministic missing-data results', () => {
+    const semantic = createSemantic('Projector stand');
+
+    expect(mapSemanticCheckToResult(createRow('Giá đỡ máy chiếu', null), semantic)).toMatchObject({
+      status: 'Thiếu dữ liệu',
+      suggestedName: 'Projector stand'
+    });
+    expect(mapSemanticCheckToResult(createRow(null, 'Projector stand'), semantic)).toMatchObject({
+      status: 'Thiếu dữ liệu',
+      suggestedName: ''
+    });
+  });
+
+  it('ships the measured calibration cases as static source code', () => {
+    expect(ENGLISH_CHECK_FEW_SHOT_EXAMPLES).toHaveLength(18);
     expect(ENGLISH_CHECK_FEW_SHOT_EXAMPLES.map((example) => example.canonicalName)).toEqual(
-      expect.arrayContaining(['Door lock set', 'IGBT transistor module', 'Tire inflator chuck', 'Tire lever'])
+      expect.arrayContaining([
+        'Door lock set',
+        'Instant digital camera',
+        'Eyeglasses strap',
+        'AC-DC switching power supply'
+      ])
     );
   });
 });

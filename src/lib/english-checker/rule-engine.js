@@ -1,60 +1,62 @@
-import { ENGLISH_CHECK_STATUS } from '@/lib/english-checker/constants';
+import {
+  ENGLISH_CHECK_RISK_CONFIDENCE_THRESHOLD,
+  ENGLISH_CHECK_STATUS
+} from '@/lib/english-checker/constants';
 import { normalizeEnglishCheckText } from '@/lib/english-checker/processing';
 import { buildEnglishCheckReason } from '@/lib/english-checker/reason-builder';
-import { getSemanticRiskReasons } from '@/lib/english-checker/risk-detector';
+import {
+  getSemanticRiskReasons,
+  isGenericOnlyEnglishName
+} from '@/lib/english-checker/risk-detector';
 
-function hasHardMismatch(checks) {
+const COMPARISON_RELATION_KEYS = Object.freeze([
+  'productIdentity',
+  'partWhole',
+  'setScope',
+  'material',
+  'function'
+]);
+
+function hasHardDifference(comparison) {
   return (
-    checks.coreProduct === 'mismatch' ||
-    checks.partWhole === 'mismatch' ||
-    checks.setScope === 'mismatch' ||
-    checks.function === 'mismatch' ||
-    checks.material === 'contradiction' ||
-    checks.terminology === 'wrong' ||
-    checks.unsupportedInfo
+    comparison.productIdentity === 'different' ||
+    comparison.partWhole === 'different' ||
+    comparison.setScope === 'different' ||
+    comparison.material === 'different' ||
+    comparison.function === 'different'
   );
 }
 
-function hasExplicitUncertainty(checks) {
+function hasUncertainComparison(comparison) {
   return (
-    checks.coreProduct === 'uncertain' ||
-    checks.partWhole === 'uncertain' ||
-    checks.setScope === 'uncertain' ||
-    checks.specificity === 'uncertain' ||
-    checks.material === 'uncertain' ||
-    checks.function === 'uncertain' ||
-    checks.terminology === 'uncertain'
+    COMPARISON_RELATION_KEYS.some((key) => comparison[key] === 'uncertain') ||
+    comparison.terminology === 'uncertain'
   );
 }
 
-function getPreliminaryStatus(semantic) {
-  if (hasHardMismatch(semantic.checks)) {
+function getPreliminaryStatus(row, semantic) {
+  const { comparison } = semantic;
+
+  if (hasHardDifference(comparison)) {
     return ENGLISH_CHECK_STATUS.WRONG;
   }
 
-  if (semantic.checks.specificity === 'too_generic' || hasExplicitUncertainty(semantic.checks)) {
+  if (
+    ['broader', 'narrower', 'uncertain'].includes(comparison.productIdentity) ||
+    hasUncertainComparison(comparison) ||
+    ['awkward', 'wrong'].includes(comparison.terminology) ||
+    comparison.unsupportedInfo ||
+    semantic.confidence < ENGLISH_CHECK_RISK_CONFIDENCE_THRESHOLD ||
+    isGenericOnlyEnglishName(row.productNameEn)
+  ) {
     return ENGLISH_CHECK_STATUS.CLOSE;
   }
 
   return ENGLISH_CHECK_STATUS.OK;
 }
 
-function selectSuggestedName(row, semantic, status) {
-  if (status === ENGLISH_CHECK_STATUS.OK) {
-    return null;
-  }
-
-  const suggestion = semantic.suggestedName?.trim() || semantic.canonicalName?.trim() || null;
-
-  if (
-    suggestion &&
-    normalizeEnglishCheckText(suggestion) === normalizeEnglishCheckText(row.productNameEn) &&
-    normalizeEnglishCheckText(row.productNameEn)
-  ) {
-    return null;
-  }
-
-  return suggestion;
+function selectSuggestedName(semantic, status) {
+  return status === ENGLISH_CHECK_STATUS.OK ? '' : semantic.canonicalName.trim();
 }
 
 export function mapSemanticCheckToResult(row, semantic) {
@@ -63,7 +65,7 @@ export function mapSemanticCheckToResult(row, semantic) {
       rowId: row.rowId,
       status: ENGLISH_CHECK_STATUS.MISSING,
       reason: 'Thiếu "Tên hàng hóa XNK".',
-      suggestedName: null
+      suggestedName: ''
     };
   }
 
@@ -72,11 +74,11 @@ export function mapSemanticCheckToResult(row, semantic) {
       rowId: row.rowId,
       status: ENGLISH_CHECK_STATUS.MISSING,
       reason: 'Thiếu "Tên TA".',
-      suggestedName: semantic.suggestedName?.trim() || semantic.canonicalName.trim()
+      suggestedName: semantic.canonicalName.trim()
     };
   }
 
-  const preliminaryStatus = getPreliminaryStatus(semantic);
+  const preliminaryStatus = getPreliminaryStatus(row, semantic);
   const riskReasons = getSemanticRiskReasons(row, semantic, preliminaryStatus);
   const status =
     preliminaryStatus === ENGLISH_CHECK_STATUS.OK && riskReasons.length
@@ -87,7 +89,7 @@ export function mapSemanticCheckToResult(row, semantic) {
     rowId: row.rowId,
     status,
     reason: buildEnglishCheckReason({ status, semantic, riskReasons }),
-    suggestedName: selectSuggestedName(row, semantic, status)
+    suggestedName: selectSuggestedName(semantic, status)
   };
 }
 
@@ -105,6 +107,6 @@ export function mapSemanticChecksToResults(rows, semanticChecks) {
   });
 }
 
-export function getPreliminarySemanticStatus(semantic) {
-  return getPreliminaryStatus(semantic);
+export function getPreliminarySemanticStatus(row, semantic) {
+  return getPreliminaryStatus(row, semantic);
 }

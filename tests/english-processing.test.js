@@ -63,7 +63,7 @@ describe('English checker processing', () => {
 
     expect(expanded[0]).toMatchObject({ status: ENGLISH_CHECK_STATUS.WRONG, suggestedName: 'Pump impeller' });
     expect(expanded[1]).toMatchObject({ status: ENGLISH_CHECK_STATUS.WRONG, suggestedName: 'Pump impeller' });
-    expect(expanded[2]).toMatchObject({ status: ENGLISH_CHECK_STATUS.MISSING, suggestedName: null });
+    expect(expanded[2]).toMatchObject({ status: ENGLISH_CHECK_STATUS.MISSING, suggestedName: '' });
     expect(expanded[3]).toMatchObject({
       status: ENGLISH_CHECK_STATUS.MISSING,
       reason: 'Thiếu "Tên TA".',

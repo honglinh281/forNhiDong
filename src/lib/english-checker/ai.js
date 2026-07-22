@@ -2,12 +2,75 @@ import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 
 import { ENGLISH_NAME_CHECK_SYSTEM_PROMPT } from '@/lib/english-checker/prompt';
+import { normalizeEnglishCheckText } from '@/lib/english-checker/processing';
 import {
   getPreliminarySemanticStatus,
   mapSemanticChecksToResults
 } from '@/lib/english-checker/rule-engine';
 import { isSemanticCheckRisky } from '@/lib/english-checker/risk-detector';
 import { semanticCheckResponseSchema } from '@/lib/english-checker/schema';
+import { applyEnglishSemanticCalibration } from '@/lib/english-checker/semantic-calibrations';
+
+function tokenizeCommercialName(value) {
+  return normalizeEnglishCheckText(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function containsTokenSequence(containerTokens, candidateTokens) {
+  if (!candidateTokens.length || candidateTokens.length > containerTokens.length) {
+    return false;
+  }
+
+  return containerTokens.some((_, startIndex) =>
+    candidateTokens.every((token, tokenIndex) => containerTokens[startIndex + tokenIndex] === token)
+  );
+}
+
+function hasIndependentContradiction(comparison) {
+  return (
+    comparison.partWhole === 'different' ||
+    comparison.setScope === 'different' ||
+    comparison.material === 'different' ||
+    comparison.function === 'different'
+  );
+}
+
+export function normalizeSemanticChecks(rows, semanticChecks) {
+  const rowById = new Map(rows.map((row) => [row.rowId, row]));
+
+  return semanticChecks.map((semantic) => {
+    const row = rowById.get(semantic.rowId);
+    const calibrated = row ? applyEnglishSemanticCalibration(row, semantic) : semantic;
+
+    if (
+      !row?.productNameEn ||
+      calibrated.comparison.unsupportedInfo ||
+      hasIndependentContradiction(calibrated.comparison)
+    ) {
+      return calibrated;
+    }
+
+    const currentTokens = tokenizeCommercialName(row.productNameEn);
+    const canonicalTokens = tokenizeCommercialName(calibrated.canonicalName);
+    const sameName = currentTokens.join(' ') === canonicalTokens.join(' ');
+
+    if (!containsTokenSequence(currentTokens, canonicalTokens)) {
+      return calibrated;
+    }
+
+    return {
+      ...calibrated,
+      comparison: {
+        ...calibrated.comparison,
+        productIdentity: sameName ? 'exact' : 'equivalent'
+      },
+      confidence: Math.max(calibrated.confidence, sameName ? 0.9 : 0.85)
+    };
+  });
+}
 
 function validateResultCoverage(rows, results) {
   const expectedIds = new Set(rows.map((row) => row.rowId));
@@ -24,23 +87,6 @@ function validateResultCoverage(rows, results) {
   if (receivedIds.size !== expectedIds.size) {
     throw new Error('OpenAI chưa trả đủ semantic analysis cho batch.');
   }
-}
-
-function normalizeSemanticOutput(rows, semanticChecks) {
-  const rowById = new Map(rows.map((row) => [row.rowId, row]));
-
-  return semanticChecks.map((semantic) => {
-    const row = rowById.get(semantic.rowId);
-
-    if (!row.productNameEn?.trim()) {
-      return {
-        ...semantic,
-        suggestedName: semantic.suggestedName?.trim() || semantic.canonicalName.trim()
-      };
-    }
-
-    return semantic;
-  });
 }
 
 export async function analyzeEnglishNamesWithOpenAI(rows, { client, model }) {
@@ -61,7 +107,7 @@ export async function analyzeEnglishNamesWithOpenAI(rows, { client, model }) {
 
   const parsed = semanticCheckResponseSchema.parse(response.output_parsed);
   validateResultCoverage(rows, parsed.results);
-  return normalizeSemanticOutput(rows, parsed.results);
+  return normalizeSemanticChecks(rows, parsed.results);
 }
 
 function mergeSemanticChecks(primaryChecks, fallbackChecks) {
@@ -89,7 +135,7 @@ export async function checkEnglishNamesWithOpenAI(
   const resolvedModel = model || process.env.OPENAI_MODEL || 'gpt-5-nano';
   const resolvedFallbackModel = fallbackModel || process.env.OPENAI_FALLBACK_MODEL || 'gpt-5-mini';
   const fallbackEnabled =
-    typeof enableFallback === 'boolean' ? enableFallback : process.env.ENABLE_AI_FALLBACK === 'true';
+    typeof enableFallback === 'boolean' ? enableFallback : process.env.ENABLE_AI_FALLBACK !== 'false';
   const primaryChecks = await analyzeEnglishNamesWithOpenAI(rows, {
     client,
     model: resolvedModel
@@ -105,7 +151,7 @@ export async function checkEnglishNamesWithOpenAI(
     isSemanticCheckRisky(
       row,
       semanticByRowId.get(row.rowId),
-      getPreliminarySemanticStatus(semanticByRowId.get(row.rowId))
+      getPreliminarySemanticStatus(row, semanticByRowId.get(row.rowId))
     )
   );
 

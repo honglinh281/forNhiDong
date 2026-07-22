@@ -23,7 +23,7 @@ export function prepareEnglishChecks(rows) {
         rowId: row.rowId,
         status: ENGLISH_CHECK_STATUS.MISSING,
         reason: 'Thiếu "Tên hàng hóa XNK".',
-        suggestedName: null
+        suggestedName: ''
       });
       continue;
     }
@@ -56,7 +56,7 @@ function normalizeModelResult(result, originalRow) {
       rowId: originalRow.rowId,
       status: ENGLISH_CHECK_STATUS.MISSING,
       reason: 'Thiếu "Tên TA".',
-      suggestedName: result.suggestedName || null
+      suggestedName: result.suggestedName || ''
     };
   }
 
@@ -64,8 +64,8 @@ function normalizeModelResult(result, originalRow) {
     return {
       rowId: originalRow.rowId,
       status: ENGLISH_CHECK_STATUS.OK,
-      reason: null,
-      suggestedName: null
+      reason: '',
+      suggestedName: ''
     };
   }
 
@@ -73,7 +73,7 @@ function normalizeModelResult(result, originalRow) {
     rowId: originalRow.rowId,
     status: result.status,
     reason: result.reason || 'Tên tiếng Anh cần được kiểm tra lại.',
-    suggestedName: result.suggestedName || null
+    suggestedName: result.suggestedName || ''
   };
 }
 
