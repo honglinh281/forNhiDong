@@ -39,7 +39,7 @@ export const ENGLISH_CHECK_COLUMN_ALIASES = Object.freeze({
 });
 
 export const ENGLISH_CHECK_HEADER_SCAN_LIMIT = 20;
-export const ENGLISH_CHECK_BATCH_SIZE = 20;
+export const ENGLISH_CHECK_BATCH_SIZE = 10;
 export const ENGLISH_CHECK_CONCURRENCY = 3;
 export const ENGLISH_CHECK_EXTENSIONS = Object.freeze(['.xlsx']);
 
