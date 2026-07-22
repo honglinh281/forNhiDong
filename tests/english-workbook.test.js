@@ -1,7 +1,11 @@
 import ExcelJS from 'exceljs';
 
 import { ENGLISH_CHECK_STATUS } from '@/lib/english-checker/constants';
-import { readEnglishCheckWorkbook, writeEnglishCheckResults } from '@/lib/english-checker/workbook';
+import {
+  getEnglishCheckCellText,
+  readEnglishCheckWorkbook,
+  writeEnglishCheckResults
+} from '@/lib/english-checker/workbook';
 
 async function createWorkbook(setup) {
   const workbook = new ExcelJS.Workbook();
@@ -85,6 +89,57 @@ describe('readEnglishCheckWorkbook', () => {
     });
 
     await expect(readEnglishCheckWorkbook(buffer)).rejects.toThrow('Không xác định được cột "Tên TA"');
+  });
+
+  it('prefers the exact Tên hàng hóa XNK header over a generic alias', async () => {
+    const buffer = await createWorkbook(async (workbook) => {
+      const worksheet = workbook.addWorksheet('Data');
+      worksheet.addRow(['Tên hàng hóa', 'Tên hàng hóa XNK', 'Tên TA']);
+      worksheet.addRow(['Generic description', 'Mô tả XNK chính xác', 'Commercial name']);
+    });
+    const parsed = await readEnglishCheckWorkbook(buffer);
+
+    expect(parsed.sheets[0].columns.productNameVi).toBe(2);
+    expect(parsed.rows[0].productNameVi).toBe('Mô tả XNK chính xác');
+  });
+
+  it('reads rich text, formula results, and secondary clarification columns completely', async () => {
+    const buffer = await createWorkbook(async (workbook) => {
+      const worksheet = workbook.addWorksheet('Data');
+      worksheet.addRow([
+        'STT',
+        'Check/bổ sung thông tin',
+        'KH phản hồi thông tin',
+        'Tên hàng hóa XNK',
+        'Tên TA',
+        'Mã HS'
+      ]);
+      worksheet.getCell('A2').value = 1;
+      worksheet.getCell('B2').value = { richText: [{ text: 'Bổ sung ' }, { text: 'vật liệu' }] };
+      worksheet.getCell('C2').value = 'Nhựa TPU';
+      worksheet.getCell('D2').value = {
+        richText: [{ text: 'Miếng dán ' }, { text: 'bảo vệ màn hình' }]
+      };
+      worksheet.getCell('E2').value = { formula: '"Screen protector"', result: 'Screen protector' };
+      worksheet.getCell('F2').value = '39199099';
+    });
+    const parsed = await readEnglishCheckWorkbook(buffer);
+
+    expect(parsed.rows[0]).toMatchObject({
+      productNameVi: 'Miếng dán bảo vệ màn hình',
+      productNameEn: 'Screen protector',
+      checkInfo: 'Bổ sung vật liệu',
+      customerFeedback: 'Nhựa TPU'
+    });
+  });
+
+  it('never stringifies complex cell objects as [object Object]', () => {
+    expect(
+      getEnglishCheckCellText({ value: { richText: [{ text: 'Pneumatic ' }, { text: 'valve' }] } })
+    ).toBe('Pneumatic valve');
+    expect(getEnglishCheckCellText({ value: { formula: 'A1', result: 'Formula result' } })).toBe(
+      'Formula result'
+    );
   });
 });
 

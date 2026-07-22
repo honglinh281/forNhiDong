@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { checkEnglishNamesWithOpenAI } from '@/lib/english-checker/ai';
+import { ENGLISH_CHECK_BATCH_SIZE } from '@/lib/english-checker/constants';
 import { expandEnglishCheckResults, prepareEnglishChecks } from '@/lib/english-checker/processing';
 import { checkRequestSchema, checkResponseSchema } from '@/lib/english-checker/schema';
 
@@ -15,6 +16,26 @@ function isTimeoutError(error) {
   const message = error instanceof Error ? error.message : String(error);
 
   return error?.name === 'APIConnectionTimeoutError' || /timed?\s*out|timeout|ETIMEDOUT/iu.test(message);
+}
+
+function getServerBatchSize() {
+  const configured = Number(process.env.AI_BATCH_SIZE);
+
+  if (Number.isInteger(configured) && configured >= 1 && configured <= 10) {
+    return configured;
+  }
+
+  return ENGLISH_CHECK_BATCH_SIZE;
+}
+
+function splitIntoBatches(rows, batchSize) {
+  const batches = [];
+
+  for (let index = 0; index < rows.length; index += batchSize) {
+    batches.push(rows.slice(index, index + batchSize));
+  }
+
+  return batches;
 }
 
 export async function POST(request) {
@@ -35,9 +56,11 @@ export async function POST(request) {
   try {
     const rows = parsedRequest.data.rows;
     const prepared = prepareEnglishChecks(rows);
-    const uniqueResults = prepared.uniqueRows.length
-      ? await checkEnglishNamesWithOpenAI(prepared.uniqueRows)
-      : [];
+    const uniqueResults = [];
+
+    for (const batch of splitIntoBatches(prepared.uniqueRows, getServerBatchSize())) {
+      uniqueResults.push(...(await checkEnglishNamesWithOpenAI(batch)));
+    }
     const results = expandEnglishCheckResults(rows, prepared, uniqueResults).map(
       ({ rowId, status, reason, suggestedName }) => ({ rowId, status, reason, suggestedName })
     );

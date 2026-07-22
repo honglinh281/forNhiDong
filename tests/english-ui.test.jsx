@@ -35,8 +35,8 @@ describe('EnglishNameCheckerApp', () => {
     vi.restoreAllMocks();
   });
 
-  it('keeps AI requests at ten rows per batch', () => {
-    expect(ENGLISH_CHECK_BATCH_SIZE).toBe(10);
+  it('keeps AI requests at eight rows per batch for deeper attention', () => {
+    expect(ENGLISH_CHECK_BATCH_SIZE).toBe(8);
   });
 
   it('parses locally, deduplicates checks, and renders the attention table', async () => {

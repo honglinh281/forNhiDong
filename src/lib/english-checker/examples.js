@@ -20,10 +20,62 @@ export const ENGLISH_CHECK_FEW_SHOT_EXAMPLES = Object.freeze([
   {
     productNameVi: 'Đồ trang trí để bàn: hình ván trượt',
     productNameEn: 'Table decorations',
-    canonicalName: 'Table decoration',
-    expectedComparison: { productIdentity: 'equivalent', terminology: 'natural' },
-    expectedFinalStatus: ENGLISH_CHECK_STATUS.OK,
-    explanation: 'Khác số ít/số nhiều và thiếu hình dạng tùy chọn không làm đổi sản phẩm.'
+    canonicalName: 'Skateboard-shaped table decoration',
+    expectedComparison: {
+      productIdentity: 'broader',
+      terminology: 'acceptable',
+      missingCriticalDetails: ['skateboard shape']
+    },
+    expectedFinalStatus: ENGLISH_CHECK_STATUS.CLOSE,
+    explanation: 'Tên decorations quá rộng vì bỏ mất hình dạng ván trượt dùng để phân biệt mặt hàng.'
+  },
+  {
+    productNameVi: 'Vỏ bảo vệ đầu nối, bộ phận của đầu nối dây điện công nghiệp',
+    productNameEn: 'Connector housing',
+    canonicalName: 'Connector protective cover',
+    expectedComparison: {
+      productIdentity: 'broader',
+      terminology: 'awkward',
+      missingCriticalDetails: ['protective cover']
+    },
+    expectedFinalStatus: ENGLISH_CHECK_STATUS.CLOSE,
+    explanation: 'Housing chưa thể hiện đúng chi tiết vỏ bảo vệ của đầu nối.'
+  },
+  {
+    productNameVi: 'Bộ phận chuyên dùng cho van điện từ: màng van khí nén',
+    productNameEn: 'Parts of a pneumatic valve',
+    canonicalName: 'Pneumatic valve diaphragm',
+    expectedComparison: {
+      productIdentity: 'broader',
+      missingCriticalDetails: ['pneumatic valve diaphragm']
+    },
+    expectedFinalStatus: ENGLISH_CHECK_STATUS.CLOSE,
+    explanation: 'Tên hiện tại chỉ nêu lớp bộ phận và bỏ mất chi tiết cụ thể là màng van.'
+  },
+  {
+    productNameVi: 'Thiết bị hỗ trợ dán kính cường lực điện thoại, dùng định vị và căn chỉnh, hoạt động bằng pin',
+    productNameEn: 'Fixture for supporting tempered glass screen protector application',
+    canonicalName: 'Phone screen protector alignment device',
+    expectedComparison: {
+      productIdentity: 'broader',
+      terminology: 'awkward',
+      missingCriticalDetails: ['positioning and alignment device']
+    },
+    expectedFinalStatus: ENGLISH_CHECK_STATUS.CLOSE,
+    explanation: 'Fixture chưa diễn đạt sát thiết bị định vị và căn chỉnh khi dán màn hình.'
+  },
+  {
+    productNameVi: 'Miếng dán cường lực bảo vệ màn hình điện thoại, chất liệu bằng nhựa TPU',
+    productNameEn: 'Tempered glass screen protector for phone',
+    canonicalName: 'Phone screen protector',
+    expectedComparison: {
+      productIdentity: 'different',
+      material: 'different',
+      terminology: 'wrong',
+      mistranslatedDetails: ['TPU plastic translated as tempered glass']
+    },
+    expectedFinalStatus: ENGLISH_CHECK_STATUS.WRONG,
+    explanation: 'Tên tiếng Anh khẳng định vật liệu kính trong khi mô tả nêu rõ nhựa TPU.'
   },
   {
     productNameVi: 'Đầu bơm lốp dùng ghép nối với dây hơi',
@@ -141,12 +193,35 @@ export const ENGLISH_CHECK_FEW_SHOT_EXAMPLES = Object.freeze([
     productNameVi: 'Đồ trang trí: hình cái đĩa, dùng trong khách sạn, bằng gỗ',
     productNameEn: 'Decorations',
     canonicalName: 'Decorative plate',
-    expectedComparison: { productIdentity: 'equivalent', terminology: 'natural' },
-    expectedFinalStatus: ENGLISH_CHECK_STATUS.OK,
-    explanation: 'Core được khai báo là đồ trang trí; hình cái đĩa và vật liệu là qualifier tùy chọn.'
+    expectedComparison: { productIdentity: 'broader', terminology: 'acceptable' },
+    expectedFinalStatus: ENGLISH_CHECK_STATUS.CLOSE,
+    explanation: 'Decorations đúng nhóm nhưng thiếu hình dạng cái đĩa dùng để định danh mặt hàng.'
   }
 ]);
 
-export function serializeEnglishCheckExamples() {
-  return JSON.stringify(ENGLISH_CHECK_FEW_SHOT_EXAMPLES, null, 2);
+export function serializeProductFactExamples() {
+  return JSON.stringify(
+    ENGLISH_CHECK_FEW_SHOT_EXAMPLES.map(({ productNameVi, canonicalName }) => ({
+      productNameVi,
+      canonicalName
+    })),
+    null,
+    2
+  );
+}
+
+export function serializeComparisonExamples() {
+  return JSON.stringify(
+    ENGLISH_CHECK_FEW_SHOT_EXAMPLES.map(
+      ({ productNameVi, productNameEn, canonicalName, expectedFinalStatus, explanation }) => ({
+        productNameVi,
+        currentEnglish: productNameEn,
+        canonicalName,
+        expectedFinalStatus,
+        explanation
+      })
+    ),
+    null,
+    2
+  );
 }

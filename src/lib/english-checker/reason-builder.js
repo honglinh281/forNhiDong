@@ -1,54 +1,97 @@
 import { ENGLISH_CHECK_STATUS } from '@/lib/english-checker/constants';
+import { isGenericOnlyEnglishName } from '@/lib/english-checker/generic-name-rule';
 
-const HARD_DIFFERENCE_REASONS = Object.freeze([
-  ['productIdentity', 'Tên TA hiện tại mô tả một loại hàng hóa khác.'],
-  ['partWhole', 'Tên TA hiện tại mâu thuẫn về quan hệ giữa bộ phận và sản phẩm hoàn chỉnh.'],
-  ['setScope', 'Tên TA hiện tại mâu thuẫn về phạm vi bộ hàng và thành phần đơn lẻ.'],
-  ['material', 'Tên TA hiện tại mâu thuẫn với vật liệu làm thay đổi bản chất hàng hóa.'],
-  ['function', 'Tên TA hiện tại mô tả công dụng khác làm thay đổi bản chất hàng hóa.']
-]);
+function quote(value) {
+  const normalized = String(value ?? '').trim();
+  return normalized ? `“${normalized}”` : 'tên hiện tại';
+}
 
-export function buildEnglishCheckReason({ status, semantic, riskReasons }) {
+function joinFacts(values) {
+  return values.filter(Boolean).join(', ');
+}
+
+export function buildEnglishCheckReason({ row, facts, comparison, verification, status, stageError }) {
   if (status === ENGLISH_CHECK_STATUS.OK) {
     return '';
   }
 
-  if (status === ENGLISH_CHECK_STATUS.WRONG) {
-    for (const [dimension, reason] of HARD_DIFFERENCE_REASONS) {
-      if (semantic.comparison[dimension] === 'different') {
-        return reason;
-      }
-    }
+  if (status === ENGLISH_CHECK_STATUS.MISSING) {
+    return row.productNameVi?.trim() ? 'Thiếu "Tên TA".' : 'Thiếu "Tên hàng hóa XNK".';
+  }
 
-    return 'Tên TA hiện tại mô tả khác bản chất hàng hóa.';
+  if (stageError) {
+    return stageError;
   }
 
   if (
-    riskReasons.includes('generic-only-name') ||
-    semantic.comparison.productIdentity === 'broader'
+    verification &&
+    (!verification.verifiedOK || verification.foundIssue !== 'none' || verification.severity !== 'none')
   ) {
-    return 'Tên TA hiện tại quá rộng hoặc quá chung so với loại hàng hóa cụ thể.';
+    return verification.explanation.trim() || 'Lượt rà soát nghiêm ngặt phát hiện tên tiếng Anh chưa đủ an toàn để xác nhận.';
   }
 
-  if (semantic.comparison.productIdentity === 'narrower') {
-    return 'Tên TA hiện tại hẹp hoặc cụ thể hơn thông tin được hỗ trợ trong mô tả tiếng Việt.';
+  const currentCore = comparison?.englishClaims?.coreProduct || row.productNameEn;
+  const actualIdentity = facts?.productIdentity?.value || facts?.canonicalName;
+
+  if (status === ENGLISH_CHECK_STATUS.WRONG) {
+    if (comparison?.identityRelation === 'different') {
+      return `Tên TA hiện tại mô tả ${quote(currentCore)}, trong khi hàng hóa thực tế là ${quote(actualIdentity)}.`;
+    }
+
+    if (comparison?.partWhole === 'mismatch') {
+      return `Tên TA hiện tại mâu thuẫn quan hệ bộ phận/sản phẩm hoàn chỉnh; mô tả tiếng Việt xác định ${quote(actualIdentity)}.`;
+    }
+
+    if (comparison?.setScope === 'mismatch') {
+      return `Tên TA hiện tại mâu thuẫn phạm vi bộ hàng/thành phần với ${quote(actualIdentity)}.`;
+    }
+
+    if (comparison?.material === 'contradiction') {
+      const englishMaterial = comparison.englishClaims.claims.material;
+      const vietnameseMaterial = facts?.factualConstraints?.material?.value;
+      return `Tên TA ghi vật liệu ${quote(englishMaterial)}, nhưng mô tả tiếng Việt xác định ${quote(vietnameseMaterial)}.`;
+    }
+
+    if (comparison?.function === 'contradiction') {
+      const englishFunction = comparison.englishClaims.claims.function;
+      const vietnameseFunction = facts?.factualConstraints?.function?.value;
+      return `Tên TA mô tả công dụng ${quote(englishFunction)}, nhưng hàng hóa thực tế có công dụng ${quote(vietnameseFunction)}.`;
+    }
+
+    if (comparison?.unsupportedClaims?.length) {
+      return `Tên TA có thông tin không được mô tả tiếng Việt hỗ trợ: ${comparison.unsupportedClaims.join(', ')}.`;
+    }
   }
 
-  if (semantic.comparison.unsupportedInfo) {
-    return 'Tên TA hiện tại có thêm thông tin chưa được hỗ trợ đầy đủ trong mô tả tiếng Việt.';
+  if (comparison?.identityRelation === 'broader') {
+    const missing = joinFacts(comparison.missedImportantFacts);
+    return `${quote(currentCore)} đúng nhóm sản phẩm nhưng chưa thể hiện ${missing ? quote(missing) : `đầy đủ ${quote(facts?.canonicalName)}`}.`;
   }
 
-  if (['awkward', 'wrong'].includes(semantic.comparison.terminology)) {
-    return 'Tên TA hiện tại hiểu được nhưng thuật ngữ thương mại chưa tự nhiên hoặc chưa chính xác.';
+  if (isGenericOnlyEnglishName(row.productNameEn)) {
+    return `${quote(row.productNameEn)} quá chung; mô tả hàng hóa xác định cụ thể là ${quote(facts?.canonicalName)}.`;
   }
 
-  if (riskReasons.includes('uncertain-comparison')) {
-    return 'Quan hệ ngữ nghĩa giữa tên hiện tại và tên chuẩn chưa đủ rõ để tự động xác nhận.';
+  if (comparison?.identityRelation === 'narrower') {
+    return `${quote(currentCore)} cụ thể hơn phạm vi được mô tả tiếng Việt hỗ trợ; tên chuẩn là ${quote(facts?.canonicalName)}.`;
   }
 
-  if (riskReasons.includes('low-confidence')) {
-    return 'Độ tin cậy chưa đủ cao để tự động xác nhận tên hiện tại.';
+  if (
+    ['partially_missing', 'critically_missing'].includes(comparison?.distinguishingCoverage) ||
+    comparison?.missedImportantFacts?.length
+  ) {
+    const missing = joinFacts(comparison?.missedImportantFacts ?? []) ||
+      joinFacts((facts?.distinguishingQualifiers ?? []).map((fact) => fact.value));
+    return `${quote(currentCore)} còn thiếu đặc điểm định danh ${quote(missing)}.`;
   }
 
-  return 'Tên TA hiện tại chưa sát với tên thương mại chuẩn.';
+  if (facts?.unresolvedCriticalFacts?.length) {
+    return `Chưa thể xác minh đầy đủ thông tin quan trọng: ${facts.unresolvedCriticalFacts.join(', ')}.`;
+  }
+
+  if (comparison?.terminology === 'awkward' || comparison?.terminology === 'misleading') {
+    return `${quote(currentCore)} chưa dùng thuật ngữ thương mại sát nghĩa; tên đề xuất là ${quote(facts?.canonicalName)}.`;
+  }
+
+  return 'Không đủ độ tin cậy để xác nhận tên tiếng Anh.';
 }

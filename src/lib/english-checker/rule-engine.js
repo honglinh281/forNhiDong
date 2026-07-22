@@ -1,65 +1,95 @@
-import {
-  ENGLISH_CHECK_RISK_CONFIDENCE_THRESHOLD,
-  ENGLISH_CHECK_STATUS
-} from '@/lib/english-checker/constants';
+import { ENGLISH_CHECK_STATUS } from '@/lib/english-checker/constants';
+import { isGenericOnlyEnglishName } from '@/lib/english-checker/generic-name-rule';
 import { normalizeEnglishCheckText } from '@/lib/english-checker/processing';
 import { buildEnglishCheckReason } from '@/lib/english-checker/reason-builder';
-import {
-  getSemanticRiskReasons,
-  isGenericOnlyEnglishName
-} from '@/lib/english-checker/risk-detector';
 
-const COMPARISON_RELATION_KEYS = Object.freeze([
-  'productIdentity',
-  'partWhole',
-  'setScope',
-  'material',
-  'function'
-]);
+function getConfidenceThreshold() {
+  const configured = Number(process.env.RISK_CONFIDENCE_THRESHOLD);
+  return Number.isFinite(configured) && configured >= 0 && configured <= 1 ? configured : 0.8;
+}
 
-function hasHardDifference(comparison) {
+export function isClearlyWrong(comparison) {
   return (
-    comparison.productIdentity === 'different' ||
-    comparison.partWhole === 'different' ||
-    comparison.setScope === 'different' ||
-    comparison.material === 'different' ||
-    comparison.function === 'different'
+    comparison.identityRelation === 'different' ||
+    comparison.partWhole === 'mismatch' ||
+    comparison.setScope === 'mismatch' ||
+    comparison.material === 'contradiction' ||
+    comparison.function === 'contradiction' ||
+    comparison.unsupportedClaims.length > 0
   );
 }
 
-function hasUncertainComparison(comparison) {
+export function needsRefinement(row, facts, comparison) {
+  const confidenceThreshold = getConfidenceThreshold();
+
   return (
-    COMPARISON_RELATION_KEYS.some((key) => comparison[key] === 'uncertain') ||
-    comparison.terminology === 'uncertain'
+    ['broader', 'narrower', 'uncertain'].includes(comparison.identityRelation) ||
+    ['partially_missing', 'critically_missing', 'uncertain'].includes(
+      comparison.distinguishingCoverage
+    ) ||
+    ['uncertain'].includes(comparison.partWhole) ||
+    ['uncertain'].includes(comparison.setScope) ||
+    ['uncertain'].includes(comparison.material) ||
+    ['uncertain'].includes(comparison.function) ||
+    ['awkward', 'misleading', 'uncertain'].includes(comparison.terminology) ||
+    comparison.missedImportantFacts.length > 0 ||
+    comparison.confidence < confidenceThreshold ||
+    facts.confidence < confidenceThreshold ||
+    facts.unresolvedCriticalFacts.length > 0 ||
+    isGenericOnlyEnglishName(row.productNameEn)
   );
 }
 
-function getPreliminaryStatus(row, semantic) {
-  const { comparison } = semantic;
+export function isPotentialOK(row, facts, comparison) {
+  const identityResolved = facts.productIdentity.value.trim().length > 0;
+  const identityCompatible = ['exact', 'equivalent'].includes(comparison.identityRelation);
+  const coverageResolved = ['complete', 'not_applicable'].includes(
+    comparison.distinguishingCoverage
+  );
+  const dimensionsResolved =
+    ['match', 'not_applicable'].includes(comparison.partWhole) &&
+    ['match', 'not_applicable'].includes(comparison.setScope) &&
+    ['match', 'omitted', 'not_applicable'].includes(comparison.material) &&
+    ['match', 'omitted', 'not_applicable'].includes(comparison.function);
+  const terminologySafe = ['natural', 'acceptable'].includes(comparison.terminology);
 
-  if (hasHardDifference(comparison)) {
+  return (
+    identityResolved &&
+    identityCompatible &&
+    coverageResolved &&
+    dimensionsResolved &&
+    terminologySafe &&
+    comparison.unsupportedClaims.length === 0 &&
+    comparison.missedImportantFacts.length === 0 &&
+    facts.unresolvedCriticalFacts.length === 0 &&
+    comparison.confidence >= getConfidenceThreshold() &&
+    facts.confidence >= getConfidenceThreshold() &&
+    !isGenericOnlyEnglishName(row.productNameEn)
+  );
+}
+
+export function getCandidateStatus(row, facts, comparison) {
+  if (isClearlyWrong(comparison)) {
     return ENGLISH_CHECK_STATUS.WRONG;
   }
 
-  if (
-    ['broader', 'narrower', 'uncertain'].includes(comparison.productIdentity) ||
-    hasUncertainComparison(comparison) ||
-    ['awkward', 'wrong'].includes(comparison.terminology) ||
-    comparison.unsupportedInfo ||
-    semantic.confidence < ENGLISH_CHECK_RISK_CONFIDENCE_THRESHOLD ||
-    isGenericOnlyEnglishName(row.productNameEn)
-  ) {
+  if (needsRefinement(row, facts, comparison)) {
     return ENGLISH_CHECK_STATUS.CLOSE;
   }
 
-  return ENGLISH_CHECK_STATUS.OK;
+  return isPotentialOK(row, facts, comparison)
+    ? ENGLISH_CHECK_STATUS.OK
+    : ENGLISH_CHECK_STATUS.CLOSE;
 }
 
-function selectSuggestedName(semantic, status) {
-  return status === ENGLISH_CHECK_STATUS.OK ? '' : semantic.canonicalName.trim();
-}
-
-export function mapSemanticCheckToResult(row, semantic) {
+export function finalizeAuditResult({
+  row,
+  facts = null,
+  comparison = null,
+  verification = null,
+  strictVerification = true,
+  stageError = ''
+}) {
   if (!normalizeEnglishCheckText(row.productNameVi)) {
     return {
       rowId: row.rowId,
@@ -69,44 +99,56 @@ export function mapSemanticCheckToResult(row, semantic) {
     };
   }
 
+  if (!facts) {
+    const status = normalizeEnglishCheckText(row.productNameEn)
+      ? ENGLISH_CHECK_STATUS.CLOSE
+      : ENGLISH_CHECK_STATUS.MISSING;
+    return {
+      rowId: row.rowId,
+      status,
+      reason: stageError || 'Không đủ độ tin cậy để xác nhận tên tiếng Anh.',
+      suggestedName: ''
+    };
+  }
+
   if (!normalizeEnglishCheckText(row.productNameEn)) {
     return {
       rowId: row.rowId,
       status: ENGLISH_CHECK_STATUS.MISSING,
       reason: 'Thiếu "Tên TA".',
-      suggestedName: semantic.canonicalName.trim()
+      suggestedName: facts.canonicalName.trim()
     };
   }
 
-  const preliminaryStatus = getPreliminaryStatus(row, semantic);
-  const riskReasons = getSemanticRiskReasons(row, semantic, preliminaryStatus);
-  const status =
-    preliminaryStatus === ENGLISH_CHECK_STATUS.OK && riskReasons.length
-      ? ENGLISH_CHECK_STATUS.CLOSE
-      : preliminaryStatus;
+  if (!comparison) {
+    const status = ENGLISH_CHECK_STATUS.CLOSE;
+    return {
+      rowId: row.rowId,
+      status,
+      reason: stageError || 'Không đủ độ tin cậy để xác nhận tên tiếng Anh.',
+      suggestedName: facts.canonicalName.trim()
+    };
+  }
+
+  let status = getCandidateStatus(row, facts, comparison);
+
+  if (status === ENGLISH_CHECK_STATUS.OK && strictVerification) {
+    const verifierConfirmed =
+      verification?.verifiedOK === true &&
+      verification.foundIssue === 'none' &&
+      verification.severity === 'none';
+
+    if (!verifierConfirmed) {
+      status = verification?.severity === 'sai_ro'
+        ? ENGLISH_CHECK_STATUS.WRONG
+        : ENGLISH_CHECK_STATUS.CLOSE;
+    }
+  }
 
   return {
     rowId: row.rowId,
     status,
-    reason: buildEnglishCheckReason({ status, semantic, riskReasons }),
-    suggestedName: selectSuggestedName(semantic, status)
+    reason: buildEnglishCheckReason({ row, facts, comparison, verification, status, stageError }),
+    suggestedName: status === ENGLISH_CHECK_STATUS.OK ? '' : facts.canonicalName.trim()
   };
-}
-
-export function mapSemanticChecksToResults(rows, semanticChecks) {
-  const semanticByRowId = new Map(semanticChecks.map((semantic) => [semantic.rowId, semantic]));
-
-  return rows.map((row) => {
-    const semantic = semanticByRowId.get(row.rowId);
-
-    if (!semantic) {
-      throw new Error(`Thiếu semantic analysis cho dòng ${row.rowId}.`);
-    }
-
-    return mapSemanticCheckToResult(row, semantic);
-  });
-}
-
-export function getPreliminarySemanticStatus(row, semantic) {
-  return getPreliminaryStatus(row, semantic);
 }

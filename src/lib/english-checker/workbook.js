@@ -20,11 +20,29 @@ export function normalizeEnglishCheckHeader(value) {
 }
 
 export function getEnglishCheckCellText(cell) {
-  if (!cell || cell.value === null || cell.value === undefined) {
+  if (!cell) {
     return '';
   }
 
-  return String(cell.text ?? cell.value).trim();
+  const value = cell.value;
+
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (['string', 'number', 'boolean'].includes(typeof value)) {
+    return String(value).trim();
+  }
+
+  if (typeof value === 'object' && Array.isArray(value.richText)) {
+    return value.richText.map((item) => item.text ?? '').join('').trim();
+  }
+
+  if (typeof value === 'object' && value.result !== null && value.result !== undefined) {
+    return String(value.result).trim();
+  }
+
+  return cell.text?.trim() ?? '';
 }
 
 function createNormalizedAliases() {
@@ -73,21 +91,30 @@ function hasTextData(worksheet, columnNumber, dataStartRow) {
 
   const sampleEnd = Math.min(worksheet.rowCount, dataStartRow + 19);
 
+  let textCount = 0;
+  let englishLikeCount = 0;
+
   for (let rowNumber = dataStartRow; rowNumber <= sampleEnd; rowNumber += 1) {
     const value = getEnglishCheckCellText(worksheet.getRow(rowNumber).getCell(columnNumber));
 
     if (value && !/^[-+]?\d[\d\s.,/]*$/.test(value)) {
-      return true;
+      textCount += 1;
+
+      if (/[a-z]/i.test(value) && !/[ăâđêôơư]/iu.test(value)) {
+        englishLikeCount += 1;
+      }
     }
   }
 
-  return false;
+  return textCount > 0 && englishLikeCount >= Math.min(2, textCount);
 }
 
 export function detectEnglishCheckColumns(worksheet, headerRowNumber) {
   const headerRow = worksheet.getRow(headerRowNumber);
   const dataStartRow = headerRowNumber + 1;
-  const productNameVi = findColumnByAlias(headerRow, NORMALIZED_ALIASES.productNameVi);
+  const productNameVi =
+    findColumnByAlias(headerRow, new Set([normalizeEnglishCheckHeader('Tên hàng hóa XNK')])) ||
+    findColumnByAlias(headerRow, NORMALIZED_ALIASES.productNameVi);
   const hsCode = findColumnByAlias(headerRow, NORMALIZED_ALIASES.hsCode);
   let productNameEn = findColumnByAlias(headerRow, NORMALIZED_ALIASES.productNameEn);
   let englishNameDetection = productNameEn ? 'header' : null;
@@ -146,7 +173,11 @@ function extractProductRows(worksheet, headerRow, columns) {
       excelRow,
       stt: columns.stt ? toNullableText(row.getCell(columns.stt)) : null,
       productNameVi: toNullableText(row.getCell(columns.productNameVi)),
-      productNameEn: toNullableText(row.getCell(columns.productNameEn))
+      productNameEn: toNullableText(row.getCell(columns.productNameEn)),
+      checkInfo: columns.checkInfo ? toNullableText(row.getCell(columns.checkInfo)) : null,
+      customerFeedback: columns.customerFeedback
+        ? toNullableText(row.getCell(columns.customerFeedback))
+        : null
     });
   }
 
@@ -289,8 +320,8 @@ export async function writeEnglishCheckResults(workbook, sheets, results) {
         pattern: 'solid',
         fgColor: { argb: ENGLISH_CHECK_STATUS_COLORS[result.status] }
       };
-      worksheet.getRow(excelRow).getCell(resultColumns.reason).value = result.reason;
-      worksheet.getRow(excelRow).getCell(resultColumns.suggestedName).value = result.suggestedName;
+      worksheet.getRow(excelRow).getCell(resultColumns.reason).value = result.reason ?? '';
+      worksheet.getRow(excelRow).getCell(resultColumns.suggestedName).value = result.suggestedName ?? '';
     }
   }
 

@@ -8,8 +8,10 @@ export function normalizeEnglishCheckText(value) {
     .replace(/\s+/g, ' ');
 }
 
-export function createEnglishCheckKey(productNameVi, productNameEn) {
-  return [normalizeEnglishCheckText(productNameVi), normalizeEnglishCheckText(productNameEn)].join('::');
+export function createEnglishCheckKey(productNameVi, productNameEn, checkInfo, customerFeedback) {
+  return [productNameVi, productNameEn, checkInfo, customerFeedback]
+    .map(normalizeEnglishCheckText)
+    .join('::');
 }
 
 export function prepareEnglishChecks(rows) {
@@ -28,7 +30,12 @@ export function prepareEnglishChecks(rows) {
       continue;
     }
 
-    const key = createEnglishCheckKey(row.productNameVi, row.productNameEn);
+    const key = createEnglishCheckKey(
+      row.productNameVi,
+      row.productNameEn,
+      row.checkInfo,
+      row.customerFeedback
+    );
     let uniqueRow = uniqueByKey.get(key);
 
     if (!uniqueRow) {

@@ -13,6 +13,10 @@ describe('POST /api/check', () => {
     checkEnglishNamesWithOpenAIMock.mockReset();
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('allows enough runtime for AI batches on Vercel', () => {
     expect(maxDuration).toBe(300);
   });
@@ -83,6 +87,38 @@ describe('POST /api/check', () => {
 
     expect(response.status).toBe(502);
     expect(checkEnglishNamesWithOpenAIMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('never sends more than eight unique rows to one semantic audit', async () => {
+    vi.stubEnv('AI_BATCH_SIZE', '8');
+    checkEnglishNamesWithOpenAIMock.mockImplementation(async (rows) =>
+      rows.map((row) => ({
+        rowId: row.rowId,
+        status: 'OK',
+        reason: '',
+        suggestedName: ''
+      }))
+    );
+    const rows = Array.from({ length: 9 }, (_, index) => ({
+      rowId: `Sheet1:${index + 2}`,
+      sheet: 'Sheet1',
+      excelRow: index + 2,
+      stt: index + 1,
+      productNameVi: `Sản phẩm ${index + 1}`,
+      productNameEn: `Product ${index + 1}`
+    }));
+    const response = await POST(
+      new Request('http://localhost/api/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(checkEnglishNamesWithOpenAIMock).toHaveBeenCalledTimes(2);
+    expect(checkEnglishNamesWithOpenAIMock.mock.calls[0][0]).toHaveLength(8);
+    expect(checkEnglishNamesWithOpenAIMock.mock.calls[1][0]).toHaveLength(1);
   });
 
   it('returns a clear 504 response for an upstream timeout', async () => {

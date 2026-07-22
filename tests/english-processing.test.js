@@ -77,4 +77,25 @@ describe('English checker processing', () => {
       missing: 2
     });
   });
+
+  it('includes secondary clarification context in the deduplication key', () => {
+    const base = {
+      sheet: 'Sheet1',
+      excelRow: 2,
+      stt: '1',
+      productNameVi: 'Miếng dán bảo vệ màn hình',
+      productNameEn: 'Screen protector',
+      checkInfo: 'Bổ sung vật liệu',
+      customerFeedback: 'Nhựa TPU'
+    };
+    const prepared = prepareEnglishChecks([
+      { ...base, rowId: 'Sheet1:2' },
+      { ...base, rowId: 'Sheet1:3', excelRow: 3 },
+      { ...base, rowId: 'Sheet1:4', excelRow: 4, customerFeedback: 'Kính tôi an toàn' }
+    ]);
+
+    expect(prepared.uniqueRows).toHaveLength(2);
+    expect(prepared.groupsByUniqueRowId.get('unique-check-1')).toHaveLength(2);
+    expect(prepared.groupsByUniqueRowId.get('unique-check-2')).toHaveLength(1);
+  });
 });

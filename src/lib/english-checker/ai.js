@@ -1,106 +1,84 @@
 import OpenAI from 'openai';
-import { zodTextFormat } from 'openai/helpers/zod';
 
-import { ENGLISH_NAME_CHECK_SYSTEM_PROMPT } from '@/lib/english-checker/prompt';
-import { normalizeEnglishCheckText } from '@/lib/english-checker/processing';
+import { compareEnglishNameClaims } from '@/lib/english-checker/ai/compare-english-name';
+import { extractVietnameseProductFacts } from '@/lib/english-checker/ai/extract-product-facts';
+import { verifyPotentialOKRows } from '@/lib/english-checker/ai/verify-potential-ok';
+import { validateProductFactEvidence } from '@/lib/english-checker/evidence-validator';
+import { getRelevantGlossaryEntries } from '@/lib/english-checker/glossary';
+import { normalizeVietnameseDescription } from '@/lib/english-checker/normalize-vietnamese';
 import {
-  getPreliminarySemanticStatus,
-  mapSemanticChecksToResults
+  finalizeAuditResult,
+  getCandidateStatus
 } from '@/lib/english-checker/rule-engine';
-import { isSemanticCheckRisky } from '@/lib/english-checker/risk-detector';
-import { createSemanticCheckResponseSchema } from '@/lib/english-checker/schema';
-import { applyEnglishSemanticCalibration } from '@/lib/english-checker/semantic-calibrations';
+import { ENGLISH_CHECK_STATUS } from '@/lib/english-checker/constants';
 
-function tokenizeCommercialName(value) {
-  return normalizeEnglishCheckText(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .split(/[^a-z0-9]+/)
-    .filter(Boolean);
+function indexByRowId(items) {
+  return new Map(items.map((item) => [item.rowId, item]));
 }
 
-function containsTokenSequence(containerTokens, candidateTokens) {
-  if (!candidateTokens.length || candidateTokens.length > containerTokens.length) {
-    return false;
+function buildFactInputs(rows) {
+  return rows
+    .filter((row) => normalizeVietnameseDescription(row.productNameVi).original)
+    .map((row) => {
+      const productNameVi = normalizeVietnameseDescription(row.productNameVi);
+      const checkInfo = normalizeVietnameseDescription(row.checkInfo);
+      const customerFeedback = normalizeVietnameseDescription(row.customerFeedback);
+
+      return {
+        rowId: row.rowId,
+        productNameVi,
+        checkInfo,
+        customerFeedback,
+        companyGlossary: getRelevantGlossaryEntries(
+          productNameVi.original,
+          checkInfo.original,
+          customerFeedback.original
+        )
+      };
+    });
+}
+
+function buildFailSafeFacts(row, factInput) {
+  const canonicalName =
+    factInput.companyGlossary[0]?.preferred || String(row.productNameEn ?? '').trim();
+
+  if (!canonicalName) {
+    return null;
   }
 
-  return containerTokens.some((_, startIndex) =>
-    candidateTokens.every((token, tokenIndex) => containerTokens[startIndex + tokenIndex] === token)
-  );
-}
-
-function hasIndependentContradiction(comparison) {
-  return (
-    comparison.partWhole === 'different' ||
-    comparison.setScope === 'different' ||
-    comparison.material === 'different' ||
-    comparison.function === 'different'
-  );
-}
-
-export function normalizeSemanticChecks(rows, semanticChecks) {
-  const rowById = new Map(rows.map((row) => [row.rowId, row]));
-
-  return semanticChecks.map((semantic) => {
-    const row = rowById.get(semantic.rowId);
-    const calibrated = row ? applyEnglishSemanticCalibration(row, semantic) : semantic;
-
-    if (
-      !row?.productNameEn ||
-      calibrated.comparison.unsupportedInfo ||
-      hasIndependentContradiction(calibrated.comparison)
-    ) {
-      return calibrated;
-    }
-
-    const currentTokens = tokenizeCommercialName(row.productNameEn);
-    const canonicalTokens = tokenizeCommercialName(calibrated.canonicalName);
-    const sameName = currentTokens.join(' ') === canonicalTokens.join(' ');
-
-    if (!containsTokenSequence(currentTokens, canonicalTokens)) {
-      return calibrated;
-    }
-
-    return {
-      ...calibrated,
-      comparison: {
-        ...calibrated.comparison,
-        productIdentity: sameName ? 'exact' : 'equivalent'
-      },
-      confidence: Math.max(calibrated.confidence, sameName ? 0.9 : 0.85)
-    };
-  });
-}
-
-export async function analyzeEnglishNamesWithOpenAI(rows, { client, model }) {
-  const responseSchema = createSemanticCheckResponseSchema(rows.map((row) => row.rowId));
-  const response = await client.responses.parse({
-    model,
-    instructions: ENGLISH_NAME_CHECK_SYSTEM_PROMPT,
-    input: JSON.stringify({ rows }),
-    reasoning: { effort: 'low' },
-    store: false,
-    text: {
-      format: zodTextFormat(responseSchema, 'xnk_english_name_semantic_checks')
-    }
-  });
-
-  if (!response.output_parsed) {
-    throw new Error('OpenAI không trả về Structured Output hợp lệ.');
-  }
-
-  const parsed = responseSchema.parse(response.output_parsed);
-  const semanticChecks = rows.map((row) => ({
+  return {
     rowId: row.rowId,
-    ...parsed.results[row.rowId]
-  }));
-
-  return normalizeSemanticChecks(rows, semanticChecks);
+    canonicalName,
+    productIdentity: {
+      value: canonicalName,
+      evidence: factInput.productNameVi.original
+    },
+    productClass: null,
+    subtype: null,
+    scope: 'unknown',
+    distinguishingQualifiers: [],
+    factualConstraints: {
+      material: null,
+      function: null,
+      application: null,
+      composition: null
+    },
+    administrativeInfo: [],
+    unresolvedCriticalFacts: ['PASS 1 fact extraction failed'],
+    confidence: 0
+  };
 }
 
-function mergeSemanticChecks(primaryChecks, fallbackChecks) {
-  const fallbackByRowId = new Map(fallbackChecks.map((semantic) => [semantic.rowId, semantic]));
-  return primaryChecks.map((semantic) => fallbackByRowId.get(semantic.rowId) || semantic);
+async function runPrimaryPassWithFallback(runPass, inputs, { client, model, verifierModel }) {
+  try {
+    return await runPass(inputs, { client, model });
+  } catch (primaryError) {
+    if (verifierModel === model) {
+      throw primaryError;
+    }
+
+    return runPass(inputs, { client, model: verifierModel });
+  }
 }
 
 export async function checkEnglishNamesWithOpenAI(
@@ -108,8 +86,8 @@ export async function checkEnglishNamesWithOpenAI(
   {
     apiKey,
     model,
-    fallbackModel,
-    enableFallback,
+    verifierModel,
+    strictVerifyOK,
     client: providedClient
   } = {}
 ) {
@@ -121,39 +99,130 @@ export async function checkEnglishNamesWithOpenAI(
 
   const client = providedClient || new OpenAI({ apiKey: resolvedApiKey });
   const resolvedModel = model || process.env.OPENAI_MODEL || 'gpt-5-nano';
-  const resolvedFallbackModel = fallbackModel || process.env.OPENAI_FALLBACK_MODEL || 'gpt-5-mini';
-  const fallbackEnabled =
-    typeof enableFallback === 'boolean' ? enableFallback : process.env.ENABLE_AI_FALLBACK !== 'false';
-  const primaryChecks = await analyzeEnglishNamesWithOpenAI(rows, {
-    client,
-    model: resolvedModel
-  });
-  const primaryResults = mapSemanticChecksToResults(rows, primaryChecks);
+  const resolvedVerifierModel =
+    verifierModel || process.env.OPENAI_VERIFIER_MODEL || 'gpt-5-mini';
+  const strictVerification =
+    typeof strictVerifyOK === 'boolean'
+      ? strictVerifyOK
+      : process.env.STRICT_VERIFY_OK !== 'false';
+  const factInputs = buildFactInputs(rows);
+  let facts = [];
+  let factsError = '';
 
-  if (!fallbackEnabled) {
-    return primaryResults;
+  if (factInputs.length) {
+    try {
+      facts = await runPrimaryPassWithFallback(extractVietnameseProductFacts, factInputs, {
+        client,
+        model: resolvedModel,
+        verifierModel: resolvedVerifierModel
+      });
+      const factInputByRowId = indexByRowId(factInputs);
+      facts = facts.map((item) =>
+        validateProductFactEvidence(item, factInputByRowId.get(item.rowId))
+      );
+    } catch {
+      factsError = 'PASS 1 không trích xuất được facts có evidence; không thể xác nhận tên tiếng Anh.';
+      const rowById = indexByRowId(rows);
+      facts = factInputs
+        .map((factInput) => buildFailSafeFacts(rowById.get(factInput.rowId), factInput))
+        .filter(Boolean);
+    }
   }
 
-  const semanticByRowId = new Map(primaryChecks.map((semantic) => [semantic.rowId, semantic]));
-  const riskyRows = rows.filter((row) =>
-    isSemanticCheckRisky(
+  const factsByRowId = indexByRowId(facts);
+  const comparisonInputs = factsError
+    ? []
+    : rows
+        .filter((row) => row.productNameEn?.trim() && factsByRowId.has(row.rowId))
+        .map((row) => {
+          const factInput = factInputs.find((item) => item.rowId === row.rowId);
+          return {
+            rowId: row.rowId,
+            currentEnglish: row.productNameEn.trim(),
+            productNameVi: factInput.productNameVi,
+            checkInfo: factInput.checkInfo,
+            customerFeedback: factInput.customerFeedback,
+            companyGlossary: factInput.companyGlossary,
+            productFacts: factsByRowId.get(row.rowId)
+          };
+        });
+  let comparisons = [];
+  let comparisonError = '';
+
+  if (comparisonInputs.length) {
+    try {
+      comparisons = await runPrimaryPassWithFallback(compareEnglishNameClaims, comparisonInputs, {
+        client,
+        model: resolvedModel,
+        verifierModel: resolvedVerifierModel
+      });
+    } catch {
+      comparisonError = 'PASS 2 không hoàn tất so sánh từng thuộc tính; dòng được chuyển sang rà soát.';
+    }
+  }
+
+  const comparisonByRowId = indexByRowId(comparisons);
+  const potentialOKInputs = strictVerification
+    ? rows
+        .filter((row) => {
+          const factsForRow = factsByRowId.get(row.rowId);
+          const comparison = comparisonByRowId.get(row.rowId);
+          return (
+            factsForRow &&
+            comparison &&
+            getCandidateStatus(row, factsForRow, comparison) === ENGLISH_CHECK_STATUS.OK
+          );
+        })
+        .map((row) => {
+          const comparisonInput = comparisonInputs.find((item) => item.rowId === row.rowId);
+          return {
+            ...comparisonInput,
+            comparison: comparisonByRowId.get(row.rowId)
+          };
+        })
+    : [];
+  let verifications = [];
+  let verifierFailed = false;
+
+  if (potentialOKInputs.length) {
+    try {
+      verifications = await verifyPotentialOKRows(potentialOKInputs, {
+        client,
+        model: resolvedVerifierModel
+      });
+    } catch {
+      verifierFailed = true;
+    }
+  }
+
+  const verificationByRowId = indexByRowId(verifications);
+
+  return rows.map((row) => {
+    const factsForRow = factsByRowId.get(row.rowId) || null;
+    const comparison = comparisonByRowId.get(row.rowId) || null;
+    const isPotentialOK =
+      factsForRow &&
+      comparison &&
+      getCandidateStatus(row, factsForRow, comparison) === ENGLISH_CHECK_STATUS.OK;
+    let stageError = '';
+
+    if (factsError) {
+      stageError = factsError;
+    } else if (!factsForRow) {
+      stageError = 'PASS 1 không tạo được canonicalName an toàn; không thể xác nhận tên tiếng Anh.';
+    } else if (!comparison && row.productNameEn?.trim()) {
+      stageError = comparisonError;
+    } else if (verifierFailed && isPotentialOK) {
+      stageError = 'PASS 3 verifier không hoàn tất; hệ thống không xác nhận OK.';
+    }
+
+    return finalizeAuditResult({
       row,
-      semanticByRowId.get(row.rowId),
-      getPreliminarySemanticStatus(row, semanticByRowId.get(row.rowId))
-    )
-  );
-
-  if (!riskyRows.length) {
-    return primaryResults;
-  }
-
-  try {
-    const fallbackChecks = await analyzeEnglishNamesWithOpenAI(riskyRows, {
-      client,
-      model: resolvedFallbackModel
+      facts: factsForRow,
+      comparison,
+      verification: verificationByRowId.get(row.rowId) || null,
+      strictVerification,
+      stageError
     });
-    return mapSemanticChecksToResults(rows, mergeSemanticChecks(primaryChecks, fallbackChecks));
-  } catch {
-    return primaryResults;
-  }
+  });
 }
