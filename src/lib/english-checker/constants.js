@@ -42,3 +42,20 @@ export const ENGLISH_CHECK_HEADER_SCAN_LIMIT = 20;
 export const ENGLISH_CHECK_BATCH_SIZE = 50;
 export const ENGLISH_CHECK_CONCURRENCY = 3;
 export const ENGLISH_CHECK_EXTENSIONS = Object.freeze(['.xlsx']);
+
+export const ENGLISH_CHECK_RISK_CONFIDENCE_THRESHOLD = 0.8;
+
+export const ENGLISH_CHECK_GENERIC_ONLY_NAMES = Object.freeze([
+  'module',
+  'part',
+  'parts',
+  'component',
+  'components',
+  'item',
+  'product',
+  'device',
+  'equipment',
+  'accessory',
+  'accessories',
+  'tool'
+]);
