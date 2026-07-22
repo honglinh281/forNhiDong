@@ -46,8 +46,7 @@ const partWholeScopeSchema = z.enum([
 const setScopeSchema = z.enum(['single', 'set', 'component_of_set', 'not_applicable', 'uncertain']);
 const terminologyStateSchema = z.enum(['natural', 'acceptable', 'awkward', 'wrong', 'uncertain']);
 
-export const semanticCheckSchema = z.object({
-  rowId: z.string().min(1),
+export const semanticCheckDetailsSchema = z.object({
   canonicalName: z.string().min(1),
   coreProduct: z.string().min(1),
   productClass: z.string().min(1),
@@ -68,9 +67,25 @@ export const semanticCheckSchema = z.object({
   confidence: z.number().min(0).max(1)
 });
 
-export const semanticCheckResponseSchema = z.object({
-  results: z.array(semanticCheckSchema)
+export const semanticCheckSchema = semanticCheckDetailsSchema.extend({
+  rowId: z.string().min(1)
 });
+
+export function createSemanticCheckResponseSchema(rowIds) {
+  const uniqueRowIds = new Set(rowIds);
+
+  if (!rowIds.length || uniqueRowIds.size !== rowIds.length) {
+    throw new Error('Danh sách rowId gửi tới OpenAI không hợp lệ.');
+  }
+
+  const resultsByRowId = Object.fromEntries(
+    rowIds.map((rowId) => [rowId, semanticCheckDetailsSchema])
+  );
+
+  return z.object({
+    results: z.object(resultsByRowId)
+  });
+}
 
 export const productCheckResultSchema = z.object({
   rowId: z.string().min(1),

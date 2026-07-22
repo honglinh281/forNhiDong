@@ -8,7 +8,7 @@ import {
   mapSemanticChecksToResults
 } from '@/lib/english-checker/rule-engine';
 import { isSemanticCheckRisky } from '@/lib/english-checker/risk-detector';
-import { semanticCheckResponseSchema } from '@/lib/english-checker/schema';
+import { createSemanticCheckResponseSchema } from '@/lib/english-checker/schema';
 import { applyEnglishSemanticCalibration } from '@/lib/english-checker/semantic-calibrations';
 
 function tokenizeCommercialName(value) {
@@ -72,24 +72,8 @@ export function normalizeSemanticChecks(rows, semanticChecks) {
   });
 }
 
-function validateResultCoverage(rows, results) {
-  const expectedIds = new Set(rows.map((row) => row.rowId));
-  const receivedIds = new Set();
-
-  for (const result of results) {
-    if (!expectedIds.has(result.rowId) || receivedIds.has(result.rowId)) {
-      throw new Error('OpenAI trả về danh sách rowId không hợp lệ.');
-    }
-
-    receivedIds.add(result.rowId);
-  }
-
-  if (receivedIds.size !== expectedIds.size) {
-    throw new Error('OpenAI chưa trả đủ semantic analysis cho batch.');
-  }
-}
-
 export async function analyzeEnglishNamesWithOpenAI(rows, { client, model }) {
+  const responseSchema = createSemanticCheckResponseSchema(rows.map((row) => row.rowId));
   const response = await client.responses.parse({
     model,
     instructions: ENGLISH_NAME_CHECK_SYSTEM_PROMPT,
@@ -97,7 +81,7 @@ export async function analyzeEnglishNamesWithOpenAI(rows, { client, model }) {
     reasoning: { effort: 'low' },
     store: false,
     text: {
-      format: zodTextFormat(semanticCheckResponseSchema, 'xnk_english_name_semantic_checks')
+      format: zodTextFormat(responseSchema, 'xnk_english_name_semantic_checks')
     }
   });
 
@@ -105,9 +89,13 @@ export async function analyzeEnglishNamesWithOpenAI(rows, { client, model }) {
     throw new Error('OpenAI không trả về Structured Output hợp lệ.');
   }
 
-  const parsed = semanticCheckResponseSchema.parse(response.output_parsed);
-  validateResultCoverage(rows, parsed.results);
-  return normalizeSemanticChecks(rows, parsed.results);
+  const parsed = responseSchema.parse(response.output_parsed);
+  const semanticChecks = rows.map((row) => ({
+    rowId: row.rowId,
+    ...parsed.results[row.rowId]
+  }));
+
+  return normalizeSemanticChecks(rows, semanticChecks);
 }
 
 function mergeSemanticChecks(primaryChecks, fallbackChecks) {

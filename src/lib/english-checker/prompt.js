@@ -50,7 +50,7 @@ Confidence calibration:
 - 0.80–0.89 when the relationship is still clear but the source text is noisy or abbreviated.
 - below 0.80 only when there is genuine unresolved ambiguity. Never lower confidence merely because optional details are omitted or the English description is long.
 
-If productNameEn is empty, still return the full independent reference and canonicalName; use uncertain for productIdentity because no comparison is possible. Return exactly one result for every rowId.
+If productNameEn is empty, still return the full independent reference and canonicalName; use uncertain for productIdentity because no comparison is possible. The results object is keyed by rowId in the schema. Fill every required rowId key exactly once and never move one row's analysis into another key.
 
 Measured calibration examples. expectedFinalStatus documents the downstream deterministic rule only; never include it in your output:
 ${serializeEnglishCheckExamples()}`;
