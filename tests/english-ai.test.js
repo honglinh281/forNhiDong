@@ -28,28 +28,34 @@ function createSemantic(rowId, overrides = {}) {
   };
 }
 
+function createParsedResponse(semanticChecks) {
+  const results = Object.fromEntries(
+    semanticChecks.map(({ rowId, ...details }) => [rowId, details])
+  );
+
+  return { output_parsed: { results } };
+}
+
 describe('checkEnglishNamesWithOpenAI', () => {
   it('requests semantic Structured Output and derives final results deterministically', async () => {
-    const parse = vi.fn().mockResolvedValue({
-      output_parsed: {
-        results: [
-          createSemantic('unique-check-1', {
-            canonicalName: "Women's short-sleeved T-shirt",
-            coreProduct: 'T-shirt',
-            productClass: 'garment',
-            specificSubtype: 'T-shirt',
-            optionalQualifiers: ['women', 'short sleeves'],
-            comparison: { productIdentity: 'equivalent' }
-          }),
-          createSemantic('unique-check-2', {
-            comparison: {
-              productIdentity: 'uncertain',
-              terminology: 'uncertain'
-            }
-          })
-        ]
-      }
-    });
+    const parse = vi.fn().mockResolvedValue(
+      createParsedResponse([
+        createSemantic('unique-check-1', {
+          canonicalName: "Women's short-sleeved T-shirt",
+          coreProduct: 'T-shirt',
+          productClass: 'garment',
+          specificSubtype: 'T-shirt',
+          optionalQualifiers: ['women', 'short sleeves'],
+          comparison: { productIdentity: 'equivalent' }
+        }),
+        createSemantic('unique-check-2', {
+          comparison: {
+            productIdentity: 'uncertain',
+            terminology: 'uncertain'
+          }
+        })
+      ])
+    );
     const client = { responses: { parse } };
     const rows = [
       {
@@ -84,6 +90,14 @@ describe('checkEnglishNamesWithOpenAI', () => {
     expect(parse.mock.calls[0][0].instructions).toContain('exact:');
     expect(parse.mock.calls[0][0].instructions).not.toContain('Return canonicalName, coreProduct, attributes, checks, suggestedName');
     expect(JSON.parse(parse.mock.calls[0][0].input)).toEqual({ rows });
+    const outputSchema = parse.mock.calls[0][0].text.format.schema;
+    expect(outputSchema.properties.results.required).toEqual([
+      'unique-check-1',
+      'unique-check-2'
+    ]);
+    expect(outputSchema.properties.results.properties['unique-check-1'].properties).not.toHaveProperty(
+      'rowId'
+    );
     expect(results).toEqual([
       {
         rowId: 'unique-check-1',
@@ -103,34 +117,30 @@ describe('checkEnglishNamesWithOpenAI', () => {
   it('calls the fallback model only for risky rows when explicitly enabled', async () => {
     const parse = vi
       .fn()
-      .mockResolvedValueOnce({
-        output_parsed: {
-          results: [
-            createSemantic('unique-check-1', {
-              canonicalName: 'Display support',
-              comparison: { productIdentity: 'equivalent' },
-              confidence: 0.61
-            }),
-            createSemantic('unique-check-2', {
-              canonicalName: 'T-shirt',
-              coreProduct: 'T-shirt',
-              productClass: 'garment',
-              specificSubtype: 'T-shirt'
-            })
-          ]
-        }
-      })
-      .mockResolvedValueOnce({
-        output_parsed: {
-          results: [
-            createSemantic('unique-check-1', {
-              canonicalName: 'Monitor mount',
-              coreProduct: 'monitor mount',
-              confidence: 0.98
-            })
-          ]
-        }
-      });
+      .mockResolvedValueOnce(
+        createParsedResponse([
+          createSemantic('unique-check-1', {
+            canonicalName: 'Display support',
+            comparison: { productIdentity: 'equivalent' },
+            confidence: 0.61
+          }),
+          createSemantic('unique-check-2', {
+            canonicalName: 'T-shirt',
+            coreProduct: 'T-shirt',
+            productClass: 'garment',
+            specificSubtype: 'T-shirt'
+          })
+        ])
+      )
+      .mockResolvedValueOnce(
+        createParsedResponse([
+          createSemantic('unique-check-1', {
+            canonicalName: 'Monitor mount',
+            coreProduct: 'monitor mount',
+            confidence: 0.98
+          })
+        ])
+      );
     const client = { responses: { parse } };
     const rows = [
       {
@@ -167,21 +177,19 @@ describe('checkEnglishNamesWithOpenAI', () => {
   });
 
   it('normalizes an inconsistent different relation when a supported long name contains canonicalName', async () => {
-    const parse = vi.fn().mockResolvedValue({
-      output_parsed: {
-        results: [
-          createSemantic('unique-check-1', {
-            canonicalName: 'DC-DC power converter',
-            coreProduct: 'DC-DC power converter',
-            comparison: {
-              productIdentity: 'different',
-              unsupportedInfo: false
-            },
-            confidence: 0.7
-          })
-        ]
-      }
-    });
+    const parse = vi.fn().mockResolvedValue(
+      createParsedResponse([
+        createSemantic('unique-check-1', {
+          canonicalName: 'DC-DC power converter',
+          coreProduct: 'DC-DC power converter',
+          comparison: {
+            productIdentity: 'different',
+            unsupportedInfo: false
+          },
+          confidence: 0.7
+        })
+      ])
+    );
     const rows = [
       {
         rowId: 'unique-check-1',
