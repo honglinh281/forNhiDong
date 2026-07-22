@@ -19,6 +19,8 @@ import { readEnglishCheckWorkbook, writeEnglishCheckResults } from '@/lib/englis
 import { hasAllowedExtension } from '@/lib/normalize';
 
 const EXCEL_ICON_SRC = '/figma/english-checker-xls.png';
+const ENGLISH_CHECK_TIMEOUT_MESSAGE =
+  'Dịch vụ AI xử lý quá thời gian. Vui lòng thử lại sau ít phút.';
 
 const RESULT_FILTERS = [
   { value: 'attention', label: 'Cần chú ý' },
@@ -72,14 +74,21 @@ async function requestCheckBatch(rows, signal) {
       }
 
       if (!response.ok) {
-        throw new Error(payload?.message ?? 'Không thể gọi dịch vụ kiểm tra Tên TA.');
+        const error = new Error(
+          payload?.message ??
+            (response.status === 504
+              ? ENGLISH_CHECK_TIMEOUT_MESSAGE
+              : 'Không thể gọi dịch vụ kiểm tra Tên TA.')
+        );
+        error.retryable = response.status !== 504;
+        throw error;
       }
 
       return checkResponseSchema.parse(payload).results;
     } catch (error) {
       lastError = error;
 
-      if (signal.aborted) {
+      if (signal.aborted || error?.retryable === false) {
         throw error;
       }
     }

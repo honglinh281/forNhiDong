@@ -5,24 +5,16 @@ import { expandEnglishCheckResults, prepareEnglishChecks } from '@/lib/english-c
 import { checkRequestSchema, checkResponseSchema } from '@/lib/english-checker/schema';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function jsonError(message, status) {
   return NextResponse.json({ message }, { status });
 }
 
-async function runOpenAIWithRetry(rows) {
-  let lastError;
+function isTimeoutError(error) {
+  const message = error instanceof Error ? error.message : String(error);
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      return await checkEnglishNamesWithOpenAI(rows);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError;
+  return error?.name === 'APIConnectionTimeoutError' || /timed?\s*out|timeout|ETIMEDOUT/iu.test(message);
 }
 
 export async function POST(request) {
@@ -43,7 +35,9 @@ export async function POST(request) {
   try {
     const rows = parsedRequest.data.rows;
     const prepared = prepareEnglishChecks(rows);
-    const uniqueResults = prepared.uniqueRows.length ? await runOpenAIWithRetry(prepared.uniqueRows) : [];
+    const uniqueResults = prepared.uniqueRows.length
+      ? await checkEnglishNamesWithOpenAI(prepared.uniqueRows)
+      : [];
     const results = expandEnglishCheckResults(rows, prepared, uniqueResults).map(
       ({ rowId, status, reason, suggestedName }) => ({ rowId, status, reason, suggestedName })
     );
@@ -51,8 +45,12 @@ export async function POST(request) {
 
     return NextResponse.json(validatedResponse);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Không thể kiểm tra Tên TA.';
-    const status = message.includes('OPENAI_API_KEY') ? 503 : 502;
+    const rawMessage = error instanceof Error ? error.message : 'Không thể kiểm tra Tên TA.';
+    const timedOut = isTimeoutError(error);
+    const message = timedOut
+      ? 'Dịch vụ AI xử lý quá thời gian. Vui lòng thử lại sau ít phút.'
+      : rawMessage;
+    const status = rawMessage.includes('OPENAI_API_KEY') ? 503 : timedOut ? 504 : 502;
     return jsonError(message, status);
   }
 }

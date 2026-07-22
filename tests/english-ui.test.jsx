@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import ExcelJS from 'exceljs';
 
 import EnglishNameCheckerApp from '@/components/english-name-checker-app';
+import { ENGLISH_CHECK_BATCH_SIZE } from '@/lib/english-checker/constants';
 
 async function createUploadFile() {
   const workbook = new ExcelJS.Workbook();
@@ -32,6 +33,10 @@ async function createUploadFile() {
 describe('EnglishNameCheckerApp', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('keeps AI requests at ten rows per batch', () => {
+    expect(ENGLISH_CHECK_BATCH_SIZE).toBe(10);
   });
 
   it('parses locally, deduplicates checks, and renders the attention table', async () => {
@@ -85,5 +90,27 @@ describe('EnglishNameCheckerApp', () => {
     await waitFor(() => {
       expect(screen.getByText('Hiển thị 3 / 3 dòng')).toBeInTheDocument();
     });
+  });
+
+  it('shows a clear timeout message without retrying the same batch', async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 504,
+      json: async () => {
+        throw new Error('Vercel returned a non-JSON timeout page.');
+      }
+    });
+
+    render(<EnglishNameCheckerApp />);
+    await user.upload(screen.getByLabelText('File Excel kiểm tra Tên TA'), await createUploadFile());
+    expect(await screen.findByText('dòng hàng hóa trên 1 sheet')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Bắt đầu đối chiếu' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Dịch vụ AI xử lý quá thời gian. Vui lòng thử lại sau ít phút.'
+    );
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Thử lại' })).toBeInTheDocument();
   });
 });
