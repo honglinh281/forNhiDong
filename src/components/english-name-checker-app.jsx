@@ -461,8 +461,8 @@ export default function EnglishNameCheckerApp() {
                       <td>
                         <span className="english-status-pill" data-status={row.status}>{row.status}</span>
                       </td>
-                      <td className="english-reason-cell">{row.reason ?? '—'}</td>
-                      <td className="english-suggestion-cell">{row.suggestedName ?? '—'}</td>
+                      <td className="english-reason-cell">{row.reason || '—'}</td>
+                      <td className="english-suggestion-cell">{row.suggestedName || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -15,34 +15,56 @@ export const checkRequestSchema = z.object({
   rows: z.array(productCheckInputSchema).min(1).max(100)
 });
 
-const matchStateSchema = z.enum(['match', 'mismatch', 'uncertain', 'not_applicable']);
-const specificityStateSchema = z.enum(['sufficient', 'too_generic', 'over_specific', 'uncertain']);
-const materialStateSchema = z.enum([
-  'match',
-  'contradiction',
-  'missing_but_optional',
+export const semanticRelationSchema = z.enum([
+  'exact',
+  'equivalent',
+  'broader',
+  'narrower',
+  'different',
   'uncertain',
   'not_applicable'
 ]);
-const terminologyStateSchema = z.enum(['natural', 'acceptable', 'wrong', 'uncertain']);
+
+const productIdentityRelationSchema = z.enum([
+  'exact',
+  'equivalent',
+  'broader',
+  'narrower',
+  'different',
+  'uncertain'
+]);
+
+const partWholeScopeSchema = z.enum([
+  'complete_product',
+  'part',
+  'accessory',
+  'consumable',
+  'not_applicable',
+  'uncertain'
+]);
+
+const setScopeSchema = z.enum(['single', 'set', 'component_of_set', 'not_applicable', 'uncertain']);
+const terminologyStateSchema = z.enum(['natural', 'acceptable', 'awkward', 'wrong', 'uncertain']);
 
 export const semanticCheckSchema = z.object({
   rowId: z.string().min(1),
   canonicalName: z.string().min(1),
   coreProduct: z.string().min(1),
-  criticalAttributes: z.array(z.string()),
-  optionalAttributes: z.array(z.string()),
-  checks: z.object({
-    coreProduct: matchStateSchema,
-    partWhole: matchStateSchema,
-    setScope: matchStateSchema,
-    specificity: specificityStateSchema,
-    material: materialStateSchema,
-    function: matchStateSchema,
+  productClass: z.string().min(1),
+  specificSubtype: z.string().nullable(),
+  partWholeScope: partWholeScopeSchema,
+  setScope: setScopeSchema,
+  criticalQualifiers: z.array(z.string()),
+  optionalQualifiers: z.array(z.string()),
+  comparison: z.object({
+    productIdentity: productIdentityRelationSchema,
+    partWhole: semanticRelationSchema,
+    setScope: semanticRelationSchema,
+    material: semanticRelationSchema,
+    function: semanticRelationSchema,
     terminology: terminologyStateSchema,
     unsupportedInfo: z.boolean()
   }),
-  suggestedName: z.string().nullable(),
   confidence: z.number().min(0).max(1)
 });
 
@@ -53,8 +75,8 @@ export const semanticCheckResponseSchema = z.object({
 export const productCheckResultSchema = z.object({
   rowId: z.string().min(1),
   status: z.enum(ENGLISH_CHECK_STATUSES),
-  reason: z.string().nullable(),
-  suggestedName: z.string().nullable()
+  reason: z.string(),
+  suggestedName: z.string()
 });
 
 export const checkResponseSchema = z.object({

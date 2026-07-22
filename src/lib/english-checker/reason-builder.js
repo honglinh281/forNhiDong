@@ -1,58 +1,54 @@
 import { ENGLISH_CHECK_STATUS } from '@/lib/english-checker/constants';
 
-const HARD_MISMATCH_REASONS = Object.freeze([
-  ['coreProduct', 'Tên TA hiện tại mô tả sai loại hàng hóa chính.'],
-  ['partWhole', 'Tên TA hiện tại không phản ánh đúng quan hệ linh kiện và sản phẩm hoàn chỉnh.'],
-  ['setScope', 'Tên TA hiện tại không phản ánh đúng phạm vi bộ hàng.'],
-  ['function', 'Tên TA hiện tại mô tả sai công dụng làm thay đổi bản chất hàng hóa.']
+const HARD_DIFFERENCE_REASONS = Object.freeze([
+  ['productIdentity', 'Tên TA hiện tại mô tả một loại hàng hóa khác.'],
+  ['partWhole', 'Tên TA hiện tại mâu thuẫn về quan hệ giữa bộ phận và sản phẩm hoàn chỉnh.'],
+  ['setScope', 'Tên TA hiện tại mâu thuẫn về phạm vi bộ hàng và thành phần đơn lẻ.'],
+  ['material', 'Tên TA hiện tại mâu thuẫn với vật liệu làm thay đổi bản chất hàng hóa.'],
+  ['function', 'Tên TA hiện tại mô tả công dụng khác làm thay đổi bản chất hàng hóa.']
 ]);
 
 export function buildEnglishCheckReason({ status, semantic, riskReasons }) {
   if (status === ENGLISH_CHECK_STATUS.OK) {
-    return null;
+    return '';
   }
 
   if (status === ENGLISH_CHECK_STATUS.WRONG) {
-    for (const [dimension, reason] of HARD_MISMATCH_REASONS) {
-      if (semantic.checks[dimension] === 'mismatch') {
+    for (const [dimension, reason] of HARD_DIFFERENCE_REASONS) {
+      if (semantic.comparison[dimension] === 'different') {
         return reason;
       }
     }
 
-    if (semantic.checks.material === 'contradiction') {
-      return 'Tên TA hiện tại mâu thuẫn với vật liệu được mô tả.';
-    }
-
-    if (semantic.checks.terminology === 'wrong') {
-      return 'Tên TA hiện tại dùng sai thuật ngữ thương mại cho hàng hóa.';
-    }
-
-    if (semantic.checks.unsupportedInfo) {
-      return 'Tên TA hiện tại bổ sung thông tin không có trong mô tả tiếng Việt.';
-    }
-
-    return 'Tên TA hiện tại làm thay đổi bản chất hàng hóa.';
+    return 'Tên TA hiện tại mô tả khác bản chất hàng hóa.';
   }
 
-  if (riskReasons.includes('generic-only-name') || semantic.checks.specificity === 'too_generic') {
-    return 'Tên TA hiện tại quá chung, chưa thể hiện loại hàng hóa cụ thể.';
+  if (
+    riskReasons.includes('generic-only-name') ||
+    semantic.comparison.productIdentity === 'broader'
+  ) {
+    return 'Tên TA hiện tại quá rộng hoặc quá chung so với loại hàng hóa cụ thể.';
   }
 
-  if (semantic.checks.specificity === 'over_specific') {
-    return 'Tên TA hiện tại cụ thể hơn thông tin có trong mô tả tiếng Việt.';
+  if (semantic.comparison.productIdentity === 'narrower') {
+    return 'Tên TA hiện tại hẹp hoặc cụ thể hơn thông tin được hỗ trợ trong mô tả tiếng Việt.';
   }
 
-  if (riskReasons.includes('uncertain-check')) {
-    return 'Một số đặc điểm ngữ nghĩa chưa đủ rõ để xác nhận tên hiện tại.';
+  if (semantic.comparison.unsupportedInfo) {
+    return 'Tên TA hiện tại có thêm thông tin chưa được hỗ trợ đầy đủ trong mô tả tiếng Việt.';
+  }
+
+  if (['awkward', 'wrong'].includes(semantic.comparison.terminology)) {
+    return 'Tên TA hiện tại hiểu được nhưng thuật ngữ thương mại chưa tự nhiên hoặc chưa chính xác.';
+  }
+
+  if (riskReasons.includes('uncertain-comparison')) {
+    return 'Quan hệ ngữ nghĩa giữa tên hiện tại và tên chuẩn chưa đủ rõ để tự động xác nhận.';
   }
 
   if (riskReasons.includes('low-confidence')) {
     return 'Độ tin cậy chưa đủ cao để tự động xác nhận tên hiện tại.';
   }
 
-  if (riskReasons.includes('suspicious-ok')) {
-    return 'Tên TA hiện tại cần được đối chiếu thêm với tên thương mại chuẩn.';
-  }
-
-  return 'Tên TA hiện tại chưa thể hiện đầy đủ thông tin quan trọng của hàng hóa.';
+  return 'Tên TA hiện tại chưa sát với tên thương mại chuẩn.';
 }

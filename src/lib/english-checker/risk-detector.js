@@ -5,55 +5,92 @@ import {
 } from '@/lib/english-checker/constants';
 import { normalizeEnglishCheckText } from '@/lib/english-checker/processing';
 
-const UNCERTAIN_CHECK_KEYS = Object.freeze([
-  'coreProduct',
+const RELATION_KEYS = Object.freeze([
+  'productIdentity',
   'partWhole',
   'setScope',
-  'specificity',
   'material',
-  'function',
-  'terminology'
+  'function'
 ]);
 
 export function isGenericOnlyEnglishName(productNameEn) {
   return ENGLISH_CHECK_GENERIC_ONLY_NAMES.includes(normalizeEnglishCheckText(productNameEn));
 }
 
-function hasUncertainCheck(checks) {
-  return UNCERTAIN_CHECK_KEYS.some((key) => checks[key] === 'uncertain');
+function hasRelation(comparison, relation) {
+  return RELATION_KEYS.some((key) => comparison[key] === relation);
 }
 
-function isSuspiciousAutoOk(row, semantic, preliminaryStatus) {
-  if (preliminaryStatus !== ENGLISH_CHECK_STATUS.OK || !normalizeEnglishCheckText(row.productNameEn)) {
+function tokenizeName(value) {
+  return normalizeEnglishCheckText(value)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function hasLowLexicalOverlap(row, semantic) {
+  const currentTokens = new Set(tokenizeName(row.productNameEn));
+  const canonicalTokens = new Set(tokenizeName(semantic.canonicalName));
+  const smallerSize = Math.min(currentTokens.size, canonicalTokens.size);
+
+  if (!smallerSize) {
     return false;
   }
 
-  // These dimensions are legitimately not applicable for many ordinary
-  // products. A missing core-product comparison is the suspicious case.
-  const hasNonComparableIdentity = semantic.checks.coreProduct === 'not_applicable';
-  const hasDifferentSuggestion =
-    normalizeEnglishCheckText(semantic.suggestedName) &&
-    normalizeEnglishCheckText(semantic.suggestedName) !== normalizeEnglishCheckText(row.productNameEn);
+  const sharedCount = [...currentTokens].filter((token) => canonicalTokens.has(token)).length;
+  return sharedCount / smallerSize < 0.5;
+}
 
-  return semantic.checks.specificity === 'over_specific' || hasNonComparableIdentity || Boolean(hasDifferentSuggestion);
+function hasContradiction(comparison) {
+  return (
+    comparison.productIdentity === 'different' ||
+    comparison.partWhole === 'different' ||
+    comparison.setScope === 'different' ||
+    comparison.material === 'different' ||
+    comparison.function === 'different'
+  );
+}
+
+function isSuspiciousAutoOk(row, semantic, preliminaryStatus) {
+  if (preliminaryStatus !== ENGLISH_CHECK_STATUS.OK) {
+    return false;
+  }
+
+  return (
+    !['exact', 'equivalent'].includes(semantic.comparison.productIdentity) ||
+    semantic.comparison.unsupportedInfo ||
+    ['awkward', 'wrong', 'uncertain'].includes(semantic.comparison.terminology) ||
+    hasLowLexicalOverlap(row, semantic)
+  );
 }
 
 export function getSemanticRiskReasons(row, semantic, preliminaryStatus) {
   const reasons = [];
 
+  if (!normalizeEnglishCheckText(row.productNameEn)) {
+    return reasons;
+  }
+
+  if (semantic.calibratedByRule) {
+    return reasons;
+  }
+
   if (semantic.confidence < ENGLISH_CHECK_RISK_CONFIDENCE_THRESHOLD) {
     reasons.push('low-confidence');
   }
 
-  if (hasUncertainCheck(semantic.checks)) {
-    reasons.push('uncertain-check');
+  if (hasRelation(semantic.comparison, 'uncertain') || semantic.comparison.terminology === 'uncertain') {
+    reasons.push('uncertain-comparison');
+  }
+
+  if (['broader', 'narrower'].includes(semantic.comparison.productIdentity)) {
+    reasons.push('relationship-review');
   }
 
   if (isGenericOnlyEnglishName(row.productNameEn)) {
     reasons.push('generic-only-name');
   }
 
-  if (semantic.checks.material === 'contradiction' || semantic.checks.unsupportedInfo) {
+  if (hasContradiction(semantic.comparison)) {
     reasons.push('contradiction');
   }
 

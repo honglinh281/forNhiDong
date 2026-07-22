@@ -27,7 +27,7 @@ describe('POST /api/check', () => {
       rowId: 'Sheet1:2',
       status: 'Thiếu dữ liệu',
       reason: 'Thiếu "Tên hàng hóa XNK".',
-      suggestedName: null
+      suggestedName: ''
     });
   });
 
