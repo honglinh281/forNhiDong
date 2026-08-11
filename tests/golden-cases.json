@@ -10,5 +10,18 @@
   { "id": "tire-lever", "category": "subtype", "vi": "Thanh nạy lốp", "en": "Tire removal tool", "expected": "Chưa sát", "suggested": "Tire lever" },
   { "id": "supported-long-name", "category": "supported_long_name", "vi": "Bộ nguồn chuyển mạch AC-DC cho máy kiểm tra bản mạch, vỏ hợp kim nhôm, đầu ra 72VDC/6.7A, 480W", "en": "AC-DC switching power supply for circuit board tester, aluminum alloy casing, output 72VDC/6.7A, power 480W", "expected": "OK", "suggested": "" },
   { "id": "explicit-material-wins", "category": "material_omission", "vi": "Miếng dán cường lực, chất liệu nhựa TPU", "en": "Phone screen protector", "expected": "Chưa sát", "suggested": "TPU phone screen protector" },
-  { "id": "same-product-material", "category": "material_match", "vi": "Ốp điện thoại bằng nhựa TPU", "en": "TPU phone case", "expected": "OK", "suggested": "" }
+  { "id": "same-product-material", "category": "material_match", "vi": "Ốp điện thoại bằng nhựa TPU", "en": "TPU phone case", "expected": "OK", "suggested": "" },
+  { "id": "instant-camera", "category": "specificity", "vi": "Máy ảnh lấy liền kỹ thuật số", "en": "Instant camera", "expected": "Chưa sát", "suggested": "Instant digital camera" },
+  { "id": "connector-cover", "category": "purpose", "vi": "Nắp bảo vệ đầu nối", "en": "Connector cover", "expected": "Chưa sát", "suggested": "Connector protective cover" },
+  { "id": "optical-audio-cable", "category": "identity", "vi": "Cáp âm thanh quang học", "en": "Audio cable", "expected": "Chưa sát", "suggested": "Optical audio cable" },
+  { "id": "oil-filter-element", "category": "identity", "vi": "Lõi lọc dầu thủy lực", "en": "Air filter", "expected": "Sai rõ", "suggested": "Hydraulic oil filter element" },
+  { "id": "hair-comb", "category": "identity", "vi": "Lược chải tóc", "en": "Hair brush", "expected": "Sai rõ", "suggested": "Hair comb" },
+  { "id": "projector-stand", "category": "exact_match", "vi": "Giá đỡ máy chiếu", "en": "Projector stand", "expected": "OK", "suggested": "" },
+  { "id": "battery-tester", "category": "exact_match", "vi": "Máy kiểm tra pin", "en": "Battery tester", "expected": "OK", "suggested": "" },
+  { "id": "pressure-regulator", "category": "identity", "vi": "Bộ điều áp khí nén", "en": "Hydraulic pressure regulator kit", "expected": "Sai rõ", "suggested": "Pneumatic pressure regulator kit" },
+  { "id": "esp32-board", "category": "specificity", "vi": "Bo mạch phát triển ESP32-S3", "en": "Development board", "expected": "Chưa sát", "suggested": "ESP32-S3 development board" },
+  { "id": "photocopier-drum", "category": "subtype", "vi": "Cụm trống máy photocopy", "en": "Photocopier part", "expected": "Chưa sát", "suggested": "Photocopier drum unit" },
+  { "id": "deburring-blade", "category": "subtype", "vi": "Lưỡi dao gọt ba via", "en": "Cutting blade", "expected": "Chưa sát", "suggested": "Deburring blade" },
+  { "id": "table-car-decoration", "category": "shape", "vi": "Đồ trang trí để bàn hình ô tô", "en": "Table decoration", "expected": "Chưa sát", "suggested": "Car-shaped table decoration" },
+  { "id": "water-pump", "category": "subtype", "vi": "Máy bơm nước tăng áp mini kiểu màng", "en": "Water pump", "expected": "Chưa sát", "suggested": "Mini diaphragm booster water pump" }
 ]

@@ -75,5 +75,7 @@ export const ENGLISH_CHECK_GENERIC_ONLY_NAMES = Object.freeze([
   'accessory',
   'accessories',
   'tool',
-  'decorations'
+  'decorations',
+  'table decorations',
+  'tempered glass'
 ]);

@@ -9,9 +9,21 @@ import { splitVietnameseClauses } from '@/lib/english-checker/normalization/spli
 describe('Vietnamese normalization and clause coverage preparation', () => {
   it('expands abbreviations only at word boundaries', () => {
     expect(normalizeVietnamese('BP van, cl TPU, kt 20mm, nsx ABC')).toBe(
-      'bộ phận van, chất liệu TPU, kích thước 20mm, nhà sản xuất ABC'
+      'bộ phận van, chất liệu TPU, kích thước 20 mm, nhà sản xuất ABC'
     );
     expect(normalizeVietnamese('socket')).toBe('socket');
+  });
+
+  it('ports the extended customs abbreviations from main without mutating normal words', () => {
+    expect(
+      normalizeVietnamese(
+        'BP chuyên dùng, sd thay thế, c/l cao su, kt 8mm, ko dùng điện, đ/áp 24V, kp hàng cũ, dùng trong CN'
+      )
+    ).toBe(
+      'bộ phận chuyên dùng, sử dụng thay thế, chất liệu cao su, kích thước 8 mm, không dùng điện, điện áp 24 V, không phải hàng cũ, dùng trong công nghiệp'
+    );
+    expect(normalizeVietnamese('van có đk trong 8mm')).toBe('van có đường kính trong 8 mm');
+    expect(normalizeVietnamese('Kẹp cố định bằng nhựa ABS')).toBe('Kẹp cố định bằng nhựa ABS');
   });
 
   it('preserves colon details, unknown fragments, and marker-based clauses', () => {

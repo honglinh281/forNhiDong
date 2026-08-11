@@ -74,6 +74,21 @@ function findColumnByAlias(headerRow: ExcelJS.Row, aliases: Set<string>): number
   return null;
 }
 
+function findColumnByAliasPriority(headerRow: ExcelJS.Row, aliases: readonly string[]): number | null {
+  const maxColumn = Math.max(headerRow.cellCount, headerRow.worksheet.columnCount);
+
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeEnglishCheckHeader(alias);
+    for (let column = 1; column <= maxColumn; column += 1) {
+      if (normalizeEnglishCheckHeader(getEnglishCheckCellText(headerRow.getCell(column))) === normalizedAlias) {
+        return column;
+      }
+    }
+  }
+
+  return null;
+}
+
 function findProductHeaderRow(worksheet: ExcelJS.Worksheet): number | null {
   const lastRow = Math.min(worksheet.rowCount, ENGLISH_CHECK_HEADER_SCAN_LIMIT);
   for (let row = 1; row <= lastRow; row += 1) {
@@ -97,9 +112,15 @@ export function detectEnglishCheckColumns(
 ) {
   const headerRow = worksheet.getRow(headerRowNumber);
   const dataStartRow = headerRowNumber + 1;
-  const productNameVi = findColumnByAlias(headerRow, NORMALIZED_ALIASES.productNameVi);
+  const productNameVi = findColumnByAliasPriority(
+    headerRow,
+    ENGLISH_CHECK_COLUMN_ALIASES.productNameVi
+  );
   const hsCode = findColumnByAlias(headerRow, NORMALIZED_ALIASES.hsCode);
-  let productNameEn = findColumnByAlias(headerRow, NORMALIZED_ALIASES.productNameEn);
+  let productNameEn = findColumnByAliasPriority(
+    headerRow,
+    ENGLISH_CHECK_COLUMN_ALIASES.productNameEn
+  );
   let englishNameDetection: 'header' | 'hs-fallback' | undefined = productNameEn ? 'header' : undefined;
 
   if (!productNameEn && hsCode) {

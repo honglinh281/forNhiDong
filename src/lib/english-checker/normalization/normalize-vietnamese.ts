@@ -1,13 +1,18 @@
 const ABBREVIATIONS: Array<[RegExp, string]> = [
+  [/(?<![\p{L}\p{N}])đk\s*trong(?![\p{L}\p{N}])/giu, 'đường kính trong'],
+  [/(?<![\p{L}\p{N}])đ\s*\/\s*áp?(?![\p{L}\p{N}])/giu, 'điện áp'],
+  [/\bh\s*thống\b/giu, 'hệ thống'],
+  [/\bhthống\b/giu, 'hệ thống'],
   [/\bbp\b/giu, 'bộ phận'],
   [/\bsd\b/giu, 'sử dụng'],
   [/\bc\s*\/\s*l\b/giu, 'chất liệu'],
   [/\bcl\b/giu, 'chất liệu'],
   [/\bkt\b/giu, 'kích thước'],
   [/\bko\b/giu, 'không'],
-  [/\bđ\s*\/\s*á\b/giu, 'điện áp'],
+  [/\bkp\b/giu, 'không phải'],
   [/\bcs\b/giu, 'công suất'],
-  [/\bnsx\b/giu, 'nhà sản xuất']
+  [/\bnsx\b/giu, 'nhà sản xuất'],
+  [/\bCN\b/gu, 'công nghiệp']
 ];
 
 export function normalizeVietnamese(value: unknown): string {
@@ -18,6 +23,7 @@ export function normalizeVietnamese(value: unknown): string {
   }
 
   return normalized
+    .replace(/(\d)\s*(mm|cm|m|v|a|w|kw|mah|wh)\b/giu, '$1 $2')
     .replace(/[ \t]+/g, ' ')
     .replace(/ *\n */g, '\n')
     .trim();
