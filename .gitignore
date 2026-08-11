@@ -3,11 +3,13 @@
 
 # testing
 /coverage
+/.playwright-cli/
 
 # next.js
 /.next/
 /out/
 build/
+*.tsbuildinfo
 /.python-packages/
 
 # misc

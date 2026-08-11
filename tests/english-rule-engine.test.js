@@ -1,204 +1,121 @@
-import { ENGLISH_CHECK_FEW_SHOT_EXAMPLES } from '@/lib/english-checker/examples';
-import { mapSemanticCheckToResult } from '@/lib/english-checker/rule-engine';
+import { finalizeAuditResult } from '@/lib/english-checker/audit/status-mapper';
+import { createAuditRequestItem } from '@/lib/english-checker/processing';
 
-function createRow(productNameVi, productNameEn) {
+function row(productNameVi, productNameEn) {
   return {
-    rowId: 'unique-check-1',
-    sheet: 'Data',
-    excelRow: 2,
-    stt: 1,
-    productNameVi,
-    productNameEn
+    rowId: 'row-1', sheet: 'Data', excelRow: 2, stt: 1,
+    productNameVi, productNameEn, checkInfo: '', customerFeedback: ''
   };
 }
 
-function createSemantic(canonicalName, comparison = {}, overrides = {}) {
+function clause(clauseId, clauseText, overrides = {}) {
   return {
-    rowId: 'unique-check-1',
-    canonicalName,
-    coreProduct: canonicalName.toLowerCase(),
-    productClass: 'commercial product',
-    specificSubtype: null,
-    partWholeScope: 'complete_product',
-    setScope: 'single',
-    criticalQualifiers: [],
-    optionalQualifiers: [],
-    comparison: {
-      productIdentity: 'exact',
-      partWhole: 'not_applicable',
-      setScope: 'not_applicable',
-      material: 'not_applicable',
-      function: 'equivalent',
-      terminology: 'natural',
-      unsupportedInfo: false,
-      ...comparison
-    },
-    confidence: 0.95,
+    clauseId,
+    clauseText,
+    clauseType: 'product_identity',
+    normalizedFact: clauseText,
+    identityDefining: true,
+    evidenceImportance: 'critical',
+    englishCoverage: 'semantic_equivalent',
+    englishEvidence: 'supported',
+    note: null,
     ...overrides
   };
 }
 
-describe('English semantic relationship rule engine', () => {
-  it('maps a different product identity and set scope to Sai rõ', () => {
-    const row = createRow('Bộ khóa cửa, gồm tay nắm và ổ khóa', 'Door handle set');
-    const semantic = createSemantic('Door lock set', {
-      productIdentity: 'different',
-      setScope: 'different',
-      terminology: 'wrong'
-    });
+function audit(sourceRow, overrides = {}) {
+  const request = createAuditRequestItem(sourceRow);
+  const base = {
+    rowId: sourceRow.rowId,
+    canonicalEnglishName: sourceRow.productNameEn || 'Canonical English name',
+    productIdentity: {
+      vietnamese: sourceRow.productNameVi,
+      english: sourceRow.productNameEn || '',
+      relation: 'equivalent'
+    },
+    clauseAudits: request.clauses.map((item) => clause(item.id, item.text)),
+    englishClaims: [],
+    unresolvedCriticalFacts: [],
+    overallConfidence: 0.96
+  };
+  return { ...base, ...overrides, productIdentity: { ...base.productIdentity, ...overrides.productIdentity } };
+}
 
-    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
-      rowId: row.rowId,
-      status: 'Sai rõ',
-      reason: 'Tên TA hiện tại mô tả một loại hàng hóa khác.',
-      suggestedName: 'Door lock set'
+function finalize(sourceRow, overrides = {}) {
+  const request = createAuditRequestItem(sourceRow);
+  return finalizeAuditResult(sourceRow, request, audit(sourceRow, overrides));
+}
+
+describe('deterministic strict status mapper', () => {
+  it('blocks OK when an explicit Vietnamese material is missing', () => {
+    const source = row('Ốp điện thoại bằng kính', 'Phone case');
+    const result = finalize(source, {
+      canonicalEnglishName: 'Glass phone case',
+      clauseAudits: [
+        clause('C1', 'Ốp điện thoại'),
+        clause('C2', 'bằng kính', { clauseType: 'material', normalizedFact: 'glass', englishCoverage: 'missing' })
+      ]
     });
+    expect(result).toMatchObject({ status: 'Chưa sát', suggestedName: 'Glass phone case' });
+    expect(result.reason).toContain('glass/kính');
   });
 
-  it('never allows a generic-only name to become OK', () => {
-    const row = createRow('Mô-đun transistor IGBT dùng cho biến tần', 'Module');
-    const semantic = createSemantic('IGBT transistor module');
-
-    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
-      rowId: row.rowId,
-      status: 'Chưa sát',
-      reason: 'Tên TA hiện tại quá rộng hoặc quá chung so với loại hàng hóa cụ thể.',
-      suggestedName: 'IGBT transistor module'
+  it('overrides an optimistic AI audit when English adds unsupported material', () => {
+    const result = finalize(row('Ốp điện thoại', 'Glass phone case'), {
+      canonicalEnglishName: 'Phone case'
     });
+    expect(result.status).toBe('Sai rõ');
+    expect(result.reason).toContain('không hỗ trợ');
   });
 
-  it('keeps optional qualifier omissions and singular/plural differences as OK', () => {
-    const row = createRow('Đồ trang trí để bàn: hình ván trượt', 'Table decorations');
-    const semantic = createSemantic(
-      'Table decoration',
-      { productIdentity: 'equivalent' },
-      { optionalQualifiers: ['skateboard-shaped'] }
-    );
-
-    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
-      rowId: row.rowId,
-      status: 'OK',
-      reason: '',
-      suggestedName: ''
+  it('detects deterministic material contradiction', () => {
+    const result = finalize(row('Miếng dán màn hình, chất liệu nhựa TPU', 'Tempered glass screen protector'), {
+      canonicalEnglishName: 'TPU screen protector'
     });
+    expect(result.status).toBe('Sai rõ');
+    expect(result.reason).toContain('TPU');
+    expect(result.reason).toContain('glass/kính');
   });
 
-  it.each([
-    ['Digital camera', 'Instant digital camera'],
-    ['Circuit board', 'ESP32-S3 development board'],
-    ['audio cable', 'Optical audio cable'],
-    ['Tire removal tool', 'Tire lever']
-  ])('maps the broader real-world name %s to Chưa sát', (productNameEn, canonicalName) => {
-    const row = createRow('Mô tả tiếng Việt xác định subtype cụ thể', productNameEn);
-    const semantic = createSemantic(canonicalName, { productIdentity: 'broader' });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
-      rowId: row.rowId,
-      status: 'Chưa sát',
-      reason: 'Tên TA hiện tại quá rộng hoặc quá chung so với loại hàng hóa cụ thể.',
-      suggestedName: canonicalName
+  it('never lets a generic-only English name become OK', () => {
+    const result = finalize(row('Mô-đun transistor IGBT dùng cho biến tần', 'Module'), {
+      canonicalEnglishName: 'IGBT transistor module'
     });
+    expect(result.status).toBe('Chưa sát');
+    expect(result.suggestedName).toBe('IGBT transistor module');
   });
 
-  it.each([
-    ['partWhole', 'Lõi lọc dầu thủy lực', 'Oil filter', 'Hydraulic oil filter element'],
-    ['setScope', 'Bộ bàn phím kèm chuột', 'Computer keyboard', 'Keyboard and mouse set'],
-    ['material', 'Túi xách nhựa', 'Leather handbag', 'Plastic handbag'],
-    ['function', 'Máy bơm nước', 'Air compressor', 'Water pump']
-  ])('maps a %s contradiction to Sai rõ', (dimension, productNameVi, productNameEn, canonicalName) => {
-    const row = createRow(productNameVi, productNameEn);
-    const semantic = createSemantic(canonicalName, { [dimension]: 'different' });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toMatchObject({
-      status: 'Sai rõ',
-      suggestedName: canonicalName
+  it('maps a different identity to Sai rõ with a specific reason', () => {
+    const result = finalize(row('Dây đeo kính', 'Eyeglasses bag'), {
+      canonicalEnglishName: 'Eyeglass strap',
+      productIdentity: { vietnamese: 'eyeglass strap', english: 'eyeglasses bag', relation: 'different' }
     });
+    expect(result).toMatchObject({ status: 'Sai rõ', suggestedName: 'Eyeglass strap' });
+    expect(result.reason).toContain('eyeglasses bag');
+    expect(result.reason).toContain('eyeglass strap');
   });
 
-  it('blocks low-confidence results from auto-OK and always supplies canonicalName', () => {
-    const row = createRow('Giá đỡ máy chiếu', 'Projector stand');
-    const semantic = createSemantic('Projector stand', {}, { confidence: 0.79 });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
-      rowId: row.rowId,
-      status: 'Chưa sát',
-      reason: 'Độ tin cậy chưa đủ cao để tự động xác nhận tên hiện tại.',
-      suggestedName: 'Projector stand'
-    });
+  it('requires positive proof before returning OK', () => {
+    const source = row('Ốp điện thoại bằng nhựa TPU', 'TPU phone case');
+    const request = createAuditRequestItem(source);
+    const result = finalizeAuditResult(source, request, audit(source, {
+      canonicalEnglishName: 'TPU phone case',
+      clauseAudits: request.clauses.map((item) => clause(item.id, item.text, {
+        clauseType: item.preTypeHint === 'unknown' ? 'other' : item.preTypeHint,
+        englishCoverage: item.preTypeHint === 'material' ? 'explicit' : 'semantic_equivalent'
+      }))
+    }));
+    expect(result).toMatchObject({ status: 'OK', reason: '', suggestedName: '' });
   });
 
-  it('maps awkward but understandable terminology to Chưa sát', () => {
-    const row = createRow('Thanh nạy lốp', 'Tire removal tool');
-    const semantic = createSemantic('Tire lever', {
-      productIdentity: 'equivalent',
-      terminology: 'awkward'
-    });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
-      rowId: row.rowId,
-      status: 'Chưa sát',
-      reason: 'Tên TA hiện tại hiểu được nhưng thuật ngữ thương mại chưa tự nhiên hoặc chưa chính xác.',
-      suggestedName: 'Tire lever'
-    });
-  });
-
-  it('maps unsupported but non-contradictory information to Chưa sát', () => {
-    const row = createRow('Túi xách tay', 'Premium handbag');
-    const semantic = createSemantic('Handbag', {
-      productIdentity: 'narrower',
-      unsupportedInfo: true
-    });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
-      rowId: row.rowId,
-      status: 'Chưa sát',
-      reason: 'Tên TA hiện tại hẹp hoặc cụ thể hơn thông tin được hỗ trợ trong mô tả tiếng Việt.',
-      suggestedName: 'Handbag'
-    });
-  });
-
-  it('accepts a longer English description when every detail is supported', () => {
-    const row = createRow(
-      'Bộ nguồn AC-DC cấp nguồn máy kiểm tra bản mạch, vỏ nhôm, 72VDC/6.7A, 480W',
-      'AC-DC switching power supply for circuit board tester, aluminum casing, 72VDC/6.7A, 480W'
-    );
-    const semantic = createSemantic('AC-DC switching power supply', {
-      productIdentity: 'equivalent',
-      material: 'equivalent',
-      function: 'equivalent',
-      unsupportedInfo: false
-    });
-
-    expect(mapSemanticCheckToResult(row, semantic)).toEqual({
-      rowId: row.rowId,
-      status: 'OK',
-      reason: '',
-      suggestedName: ''
-    });
-  });
-
-  it('returns non-null strings for deterministic missing-data results', () => {
-    const semantic = createSemantic('Projector stand');
-
-    expect(mapSemanticCheckToResult(createRow('Giá đỡ máy chiếu', null), semantic)).toMatchObject({
-      status: 'Thiếu dữ liệu',
-      suggestedName: 'Projector stand'
-    });
-    expect(mapSemanticCheckToResult(createRow(null, 'Projector stand'), semantic)).toMatchObject({
-      status: 'Thiếu dữ liệu',
-      suggestedName: ''
-    });
-  });
-
-  it('ships the measured calibration cases as static source code', () => {
-    expect(ENGLISH_CHECK_FEW_SHOT_EXAMPLES).toHaveLength(18);
-    expect(ENGLISH_CHECK_FEW_SHOT_EXAMPLES.map((example) => example.canonicalName)).toEqual(
-      expect.arrayContaining([
-        'Door lock set',
-        'Instant digital camera',
-        'Eyeglasses strap',
-        'AC-DC switching power supply'
-      ])
-    );
+  it('never auto-OKs uncertainty or low confidence', () => {
+    expect(finalize(row('Giá đỡ máy chiếu', 'Projector stand'), {
+      overallConfidence: 0.7,
+      canonicalEnglishName: 'Projector stand'
+    }).status).toBe('Chưa sát');
+    expect(finalize(row('Giá đỡ máy chiếu', 'Projector stand'), {
+      unresolvedCriticalFacts: ['product subtype'],
+      canonicalEnglishName: 'Projector stand'
+    }).status).toBe('Chưa sát');
   });
 });

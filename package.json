@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "NEXT_TELEMETRY_DISABLED=1 node scripts/install-python-deps.mjs && NEXT_TELEMETRY_DISABLED=1 next dev --webpack",
     "build": "NEXT_TELEMETRY_DISABLED=1 next build --webpack",
+    "typecheck": "tsc --noEmit",
     "start": "NEXT_TELEMETRY_DISABLED=1 next start",
     "test": "node scripts/install-python-deps.mjs && vitest run",
     "test:watch": "vitest"
@@ -26,8 +27,12 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "jsdom": "^29.0.1",
     "pdf-lib": "^1.17.1",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.2"
   }
 }

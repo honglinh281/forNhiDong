@@ -1,0 +1,14 @@
+[
+  { "id": "material-missing", "category": "material_omission", "vi": "Ốp điện thoại bằng kính", "en": "Phone case", "expected": "Chưa sát", "suggested": "Glass phone case" },
+  { "id": "unsupported-material", "category": "material_unsupported", "vi": "Ốp điện thoại", "en": "Glass phone case", "expected": "Sai rõ", "suggested": "Phone case" },
+  { "id": "material-contradiction", "category": "material_contradiction", "vi": "Miếng dán bảo vệ màn hình, chất liệu nhựa TPU", "en": "Tempered glass screen protector", "expected": "Sai rõ", "suggested": "TPU screen protector" },
+  { "id": "igbt-generic", "category": "generic_name", "vi": "Mô-đun transistor IGBT dùng cho biến tần", "en": "Module", "expected": "Chưa sát", "suggested": "IGBT transistor module" },
+  { "id": "pneumatic-diaphragm", "category": "colon_subtype", "vi": "BP chuyên dùng cho van điện từ: Màng van khí nén", "en": "Parts of a pneumatic valve", "expected": "Chưa sát", "suggested": "Pneumatic valve diaphragm" },
+  { "id": "door-lock", "category": "set_scope", "vi": "Bộ khóa cửa, gồm tay nắm và ổ khóa", "en": "Door handle set", "expected": "Sai rõ", "suggested": "Door lock set" },
+  { "id": "decoration-shape", "category": "shape", "vi": "Đồ trang trí để bàn: Hình ván trượt", "en": "Table decorations", "expected": "Chưa sát", "suggested": "Skateboard-shaped table decoration" },
+  { "id": "eyeglass-strap", "category": "identity", "vi": "Dây đeo kính", "en": "Eyeglasses bag", "expected": "Sai rõ", "suggested": "Eyeglass strap" },
+  { "id": "tire-lever", "category": "subtype", "vi": "Thanh nạy lốp", "en": "Tire removal tool", "expected": "Chưa sát", "suggested": "Tire lever" },
+  { "id": "supported-long-name", "category": "supported_long_name", "vi": "Bộ nguồn chuyển mạch AC-DC cho máy kiểm tra bản mạch, vỏ hợp kim nhôm, đầu ra 72VDC/6.7A, 480W", "en": "AC-DC switching power supply for circuit board tester, aluminum alloy casing, output 72VDC/6.7A, power 480W", "expected": "OK", "suggested": "" },
+  { "id": "explicit-material-wins", "category": "material_omission", "vi": "Miếng dán cường lực, chất liệu nhựa TPU", "en": "Phone screen protector", "expected": "Chưa sát", "suggested": "TPU phone screen protector" },
+  { "id": "same-product-material", "category": "material_match", "vi": "Ốp điện thoại bằng nhựa TPU", "en": "TPU phone case", "expected": "OK", "suggested": "" }
+]

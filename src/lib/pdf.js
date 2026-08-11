@@ -14,8 +14,14 @@ const PYTHON_PACKAGES_DIR = path.join(PROJECT_ROOT, '.python-packages');
 
 const LOCAL_PYTHON_CANDIDATES = [
   path.join(PROJECT_ROOT, '.venv', 'bin', 'python'),
-  path.join(PROJECT_ROOT, '.venv', 'Scripts', 'python.exe')
-];
+  path.join(PROJECT_ROOT, '.venv', 'Scripts', 'python.exe'),
+  process.env.PYTHON,
+  'python3.13',
+  'python3.12',
+  'python3.11',
+  'python3.10',
+  'python3'
+].filter(Boolean);
 
 function scriptPath(scriptName) {
   return path.join(PROJECT_ROOT, 'scripts', scriptName);
@@ -32,12 +38,16 @@ function toUint8Array(bufferLike) {
 async function resolvePythonExecutable() {
   for (const candidatePath of LOCAL_PYTHON_CANDIDATES) {
     try {
-      await access(candidatePath);
+      if (path.isAbsolute(candidatePath)) {
+        await access(candidatePath);
+      } else {
+        await execFileAsync(candidatePath, ['--version']);
+      }
       return candidatePath;
     } catch {}
   }
 
-  return 'python3';
+  return 'python';
 }
 
 function buildPythonEnv() {

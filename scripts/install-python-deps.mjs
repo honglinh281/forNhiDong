@@ -11,7 +11,15 @@ const PYTHON_PACKAGES_DIR = path.join(PROJECT_ROOT, '.python-packages');
 const STAMP_PATH = path.join(PYTHON_PACKAGES_DIR, '.requirements.hash');
 const PDFMINER_INIT_PATH = path.join(PYTHON_PACKAGES_DIR, 'pdfminer', '__init__.py');
 
-const PYTHON_CANDIDATES = [process.env.PYTHON, 'python3', 'python'].filter(Boolean);
+const PYTHON_CANDIDATES = [
+  process.env.PYTHON,
+  'python3.13',
+  'python3.12',
+  'python3.11',
+  'python3.10',
+  'python3',
+  'python'
+].filter(Boolean);
 
 function hashRequirements(content) {
   return createHash('sha256').update(content).digest('hex');

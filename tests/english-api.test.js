@@ -1,117 +1,104 @@
-const { checkEnglishNamesWithOpenAIMock } = vi.hoisted(() => ({
-  checkEnglishNamesWithOpenAIMock: vi.fn()
-}));
+const { runMicroAuditMock } = vi.hoisted(() => ({ runMicroAuditMock: vi.fn() }));
 
-vi.mock('@/lib/english-checker/ai', () => ({
-  checkEnglishNamesWithOpenAI: checkEnglishNamesWithOpenAIMock
-}));
+vi.mock('@/lib/english-checker/ai/run-micro-audit', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, runMicroAudit: runMicroAuditMock };
+});
 
-import { maxDuration, POST } from '@/app/api/check/route';
+import { AuditTimeoutError } from '@/lib/english-checker/ai/run-micro-audit';
+import { maxDuration, POST } from '@/app/api/audit/route';
 
-describe('POST /api/check', () => {
-  beforeEach(() => {
-    checkEnglishNamesWithOpenAIMock.mockReset();
+function requestItem(rowId = 'Sheet1::2') {
+  return {
+    rowId,
+    originalVietnamese: 'Ốp điện thoại bằng nhựa TPU',
+    normalizedVietnamese: 'Ốp điện thoại bằng nhựa TPU',
+    currentEnglish: 'TPU phone case',
+    clauses: [
+      { id: 'C1', text: 'Ốp điện thoại', preTypeHint: 'product_identity' },
+      { id: 'C2', text: 'bằng nhựa TPU', preTypeHint: 'material' }
+    ],
+    secondaryContext: { checkInfo: '', customerFeedback: '' },
+    glossaryHints: []
+  };
+}
+
+function auditItem(rowId = 'Sheet1::2') {
+  return {
+    rowId,
+    canonicalEnglishName: 'TPU phone case',
+    productIdentity: { vietnamese: 'ốp điện thoại', english: 'phone case', relation: 'equivalent' },
+    clauseAudits: [
+      {
+        clauseId: 'C1', clauseText: 'Ốp điện thoại', clauseType: 'product_identity',
+        normalizedFact: 'phone case', identityDefining: true, evidenceImportance: 'critical',
+        englishCoverage: 'semantic_equivalent', englishEvidence: 'phone case', note: null
+      },
+      {
+        clauseId: 'C2', clauseText: 'bằng nhựa TPU', clauseType: 'material',
+        normalizedFact: 'TPU', identityDefining: true, evidenceImportance: 'critical',
+        englishCoverage: 'explicit', englishEvidence: 'TPU', note: null
+      }
+    ],
+    englishClaims: [],
+    unresolvedCriticalFacts: [],
+    overallConfidence: 0.97
+  };
+}
+
+describe('POST /api/audit', () => {
+  beforeEach(() => runMicroAuditMock.mockReset());
+
+  it('is a short stateless micro-task route', () => {
+    expect(maxDuration).toBe(60);
   });
 
-  it('allows enough runtime for AI batches on Vercel', () => {
-    expect(maxDuration).toBe(300);
-  });
-
-  it('resolves rows missing Tên hàng hóa XNK without calling OpenAI', async () => {
-    const response = await POST(
-      new Request('http://localhost/api/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rows: [
-            {
-              rowId: 'Sheet1:2',
-              sheet: 'Sheet1',
-              excelRow: 2,
-              stt: 1,
-              productNameVi: null,
-              productNameEn: 'PUMP IMPELLER'
-            }
-          ]
-        })
-      })
-    );
+  it('returns structured semantic facts without a business status', async () => {
+    runMicroAuditMock.mockResolvedValue({ items: [auditItem()], model: 'audit-model' });
+    const response = await POST(new Request('http://localhost/api/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: 'req-1', items: [requestItem()] })
+    }));
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload.results[0]).toEqual({
-      rowId: 'Sheet1:2',
-      status: 'Thiếu dữ liệu',
-      reason: 'Thiếu "Tên hàng hóa XNK".',
-      suggestedName: ''
-    });
+    expect(payload.requestId).toBe('req-1');
+    expect(payload.items[0].canonicalEnglishName).toBe('TPU phone case');
+    expect(payload.items[0]).not.toHaveProperty('status');
+    expect(runMicroAuditMock).toHaveBeenCalledTimes(1);
   });
 
-  it('validates request payloads before processing', async () => {
-    const response = await POST(
-      new Request('http://localhost/api/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: [] })
+  it('rejects a request larger than five rows', async () => {
+    const response = await POST(new Request('http://localhost/api/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestId: 'req-too-large',
+        items: Array.from({ length: 6 }, (_, index) => requestItem(`row-${index}`))
       })
-    );
-
+    }));
     expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe('INVALID_INPUT');
+    expect(runMicroAuditMock).not.toHaveBeenCalled();
   });
 
-  it('does not retry the whole AI batch inside one server invocation', async () => {
-    checkEnglishNamesWithOpenAIMock.mockRejectedValueOnce(new Error('OpenAI upstream failed.'));
-
-    const response = await POST(
-      new Request('http://localhost/api/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rows: [
-            {
-              rowId: 'Sheet1:2',
-              sheet: 'Sheet1',
-              excelRow: 2,
-              stt: 1,
-              productNameVi: 'Giá đỡ máy chiếu',
-              productNameEn: 'Projector stand'
-            }
-          ]
-        })
-      })
-    );
-
-    expect(response.status).toBe(502);
-    expect(checkEnglishNamesWithOpenAIMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns a clear 504 response for an upstream timeout', async () => {
-    const timeoutError = new Error('Request timed out.');
-    timeoutError.name = 'APIConnectionTimeoutError';
-    checkEnglishNamesWithOpenAIMock.mockRejectedValueOnce(timeoutError);
-
-    const response = await POST(
-      new Request('http://localhost/api/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rows: [
-            {
-              rowId: 'Sheet1:2',
-              sheet: 'Sheet1',
-              excelRow: 2,
-              stt: 1,
-              productNameVi: 'Giá đỡ máy chiếu',
-              productNameEn: 'Projector stand'
-            }
-          ]
-        })
-      })
-    );
-    const payload = await response.json();
-
+  it('uses the predictable timeout error contract', async () => {
+    runMicroAuditMock.mockImplementationOnce(() => {
+      throw new AuditTimeoutError();
+    });
+    const response = await POST(new Request('http://localhost/api/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: 'req-timeout', items: [requestItem()] })
+    }));
     expect(response.status).toBe(504);
-    expect(payload.message).toContain('xử lý quá thời gian');
-    expect(checkEnglishNamesWithOpenAIMock).toHaveBeenCalledTimes(1);
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'AUDIT_TIMEOUT',
+        message: 'Audit did not finish within the soft timeout.',
+        retryable: true
+      }
+    });
   });
 });

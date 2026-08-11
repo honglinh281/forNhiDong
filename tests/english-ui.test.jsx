@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import ExcelJS from 'exceljs';
 
 import EnglishNameCheckerApp from '@/components/english-name-checker-app';
-import { ENGLISH_CHECK_BATCH_SIZE } from '@/lib/english-checker/constants';
+import { AUDIT_BATCH_SIZE } from '@/lib/english-checker/constants';
 
 async function createUploadFile() {
   const workbook = new ExcelJS.Workbook();
@@ -20,60 +20,73 @@ async function createUploadFile() {
   const file = new File([bytes], 'hang-hoa.xlsx', {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   });
-
   if (!file.arrayBuffer) {
     Object.defineProperty(file, 'arrayBuffer', {
       value: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     });
   }
-
   return file;
 }
 
-describe('EnglishNameCheckerApp', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
+function auditFor(item) {
+  const missingEnglish = !item.currentEnglish;
+  const pump = item.originalVietnamese.toLowerCase().includes('cánh bơm');
+  const canonicalEnglishName = pump ? 'Pump impeller' : 'Projector stand';
+  return {
+    rowId: item.rowId,
+    canonicalEnglishName,
+    productIdentity: {
+      vietnamese: pump ? 'pump impeller' : 'projector stand',
+      english: item.currentEnglish,
+      relation: missingEnglish ? 'uncertain' : pump ? 'different' : 'equivalent'
+    },
+    clauseAudits: item.clauses.map((inputClause) => ({
+      clauseId: inputClause.id,
+      clauseText: inputClause.text,
+      clauseType: inputClause.preTypeHint === 'unknown' ? 'other' : inputClause.preTypeHint,
+      normalizedFact: canonicalEnglishName,
+      identityDefining: inputClause.id === 'C1',
+      evidenceImportance: inputClause.id === 'C1' ? 'critical' : 'supporting',
+      englishCoverage: missingEnglish ? 'missing' : pump ? 'contradiction' : 'semantic_equivalent',
+      englishEvidence: missingEnglish ? null : item.currentEnglish,
+      note: null
+    })),
+    englishClaims: [],
+    unresolvedCriticalFacts: missingEnglish ? ['English name missing'] : [],
+    overallConfidence: missingEnglish ? 0.9 : 0.97
+  };
+}
+
+function successResponse(options) {
+  const payload = JSON.parse(options.body);
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      requestId: payload.requestId,
+      items: payload.items.map(auditFor),
+      meta: { model: 'test-model', durationMs: 12 }
+    })
+  };
+}
+
+describe('EnglishNameCheckerApp micro-audit orchestration', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('uses three rows per micro batch', () => {
+    expect(AUDIT_BATCH_SIZE).toBe(3);
   });
 
-  it('keeps AI requests at ten rows per batch', () => {
-    expect(ENGLISH_CHECK_BATCH_SIZE).toBe(10);
-  });
-
-  it('parses locally, deduplicates checks, and renders the attention table', async () => {
+  it('parses locally, deduplicates, calls /api/audit, and renders deterministic results', async () => {
     const user = userEvent.setup();
-    global.fetch = vi.fn().mockImplementation(async (_url, options) => {
-      const payload = JSON.parse(options.body);
-
-      return {
-        ok: true,
-        json: async () => ({
-          results: payload.rows.map((row) =>
-            row.productNameEn
-              ? {
-                  rowId: row.rowId,
-                  status: 'Sai rõ',
-                  reason: 'Tên hiện tại mô tả máy hoàn chỉnh.',
-                  suggestedName: 'Pump impeller'
-                }
-              : {
-                  rowId: row.rowId,
-                  status: 'Thiếu dữ liệu',
-                  reason: 'Thiếu "Tên TA".',
-                  suggestedName: 'Projector stand'
-                }
-          )
-        })
-      };
-    });
-
+    global.fetch = vi.fn(async (_url, options) => successResponse(options));
     render(<EnglishNameCheckerApp />);
     await user.upload(screen.getByLabelText('File Excel kiểm tra Tên TA'), await createUploadFile());
 
     expect(await screen.findByText('3')).toBeInTheDocument();
     expect(screen.getByText('dòng hàng hóa trên 1 sheet')).toBeInTheDocument();
     expect(screen.getByText('Cột ẩn ✓')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Bắt đầu đối chiếu' }));
+    await user.click(screen.getByRole('button', { name: 'Bắt đầu kiểm tra' }));
 
     expect(await screen.findByRole('heading', { name: 'Kết quả kiểm tra Tên TA' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cần chú ý (3)' })).toHaveAttribute('aria-pressed', 'true');
@@ -81,36 +94,39 @@ describe('EnglishNameCheckerApp', () => {
     expect(screen.getByText('Projector stand')).toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
-    const [, requestOptions] = global.fetch.mock.calls[0];
+    const [url, requestOptions] = global.fetch.mock.calls[0];
     const requestPayload = JSON.parse(requestOptions.body);
-    expect(requestPayload.rows).toHaveLength(2);
-    expect(requestOptions.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(url).toBe('/api/audit');
+    expect(requestPayload.items).toHaveLength(2);
+    expect(requestPayload.items[0].clauses.length).toBeGreaterThan(0);
     expect(requestOptions.body).not.toContain('UEsDB');
-
-    await waitFor(() => {
-      expect(screen.getByText('Hiển thị 3 / 3 dòng')).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByText('Hiển thị 3 / 3 dòng')).toBeInTheDocument());
   });
 
-  it('shows a clear timeout message without retrying the same batch', async () => {
+  it('splits a timed-out batch and completes the remaining micro tasks', async () => {
     const user = userEvent.setup();
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 504,
-      json: async () => {
-        throw new Error('Vercel returned a non-JSON timeout page.');
+    let call = 0;
+    global.fetch = vi.fn(async (_url, options) => {
+      call += 1;
+      if (call === 1) {
+        return {
+          ok: false,
+          status: 504,
+          json: async () => ({
+            error: { code: 'AUDIT_TIMEOUT', message: 'soft timeout', retryable: true }
+          })
+        };
       }
+      return successResponse(options);
     });
 
     render(<EnglishNameCheckerApp />);
     await user.upload(screen.getByLabelText('File Excel kiểm tra Tên TA'), await createUploadFile());
     expect(await screen.findByText('dòng hàng hóa trên 1 sheet')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Bắt đầu đối chiếu' }));
+    await user.click(screen.getByRole('button', { name: 'Bắt đầu kiểm tra' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Dịch vụ AI xử lý quá thời gian. Vui lòng thử lại sau ít phút.'
-    );
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: 'Thử lại' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Kết quả kiểm tra Tên TA' })).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+    expect(screen.queryByText('Kết quả một phần')).not.toBeInTheDocument();
   });
 });
