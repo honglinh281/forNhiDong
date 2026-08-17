@@ -14,6 +14,21 @@ async function createWorkbook(setup) {
 }
 
 describe('readEnglishCheckWorkbook', () => {
+  it('reads strings, numbers, rich text, formulas, null, and multiline cells without object coercion', () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Cells');
+    sheet.getCell('A1').value = ' plain ';
+    sheet.getCell('A2').value = 42;
+    sheet.getCell('A3').value = { richText: [{ text: 'TPU ' }, { text: 'phone case' }] };
+    sheet.getCell('A4').value = { formula: '1+1', result: 2 };
+    sheet.getCell('A5').value = null;
+    sheet.getCell('A6').value = 'line 1\nline 2';
+
+    expect(Array.from({ length: 6 }, (_, index) => getEnglishCheckCellText(sheet.getCell(`A${index + 1}`)))).toEqual([
+      'plain', '42', 'TPU phone case', '2', '', 'line 1\nline 2'
+    ]);
+  });
+
   it('detects a hidden Tên TA column by header and scans multiple sheets independently', async () => {
     const buffer = await createWorkbook(async (workbook) => {
       const ignored = workbook.addWorksheet('Ghi chú');
@@ -38,7 +53,7 @@ describe('readEnglishCheckWorkbook', () => {
     });
     expect(parsed.rows).toEqual([
       expect.objectContaining({
-        rowId: 'Hàng hóa:4',
+        rowId: 'Hàng hóa::4',
         stt: '1',
         productNameVi: 'Cánh bơm, dùng cho máy bơm nước',
         productNameEn: 'Pump impeller'
@@ -154,10 +169,11 @@ describe('writeEnglishCheckResults', () => {
     const parsed = await readEnglishCheckWorkbook(sourceBuffer);
     const outputBuffer = await writeEnglishCheckResults(parsed.workbook, parsed.sheets, [
       {
-        rowId: 'Hàng hóa:2',
+        rowId: 'Hàng hóa::2',
         status: ENGLISH_CHECK_STATUS.WRONG,
         reason: 'Tên hiện tại mô tả máy hoàn chỉnh thay vì linh kiện.',
-        suggestedName: 'Pump impeller'
+        suggestedName: 'Pump impeller',
+        riskScore: 4
       }
     ]);
     const outputWorkbook = new ExcelJS.Workbook();

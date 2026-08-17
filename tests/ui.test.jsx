@@ -156,6 +156,8 @@ describe('CustomsCheckerApp', () => {
     expect(screen.getAllByText('85044090').length).toBeGreaterThan(0);
     expect(screen.getByText('Lỗi đọc dữ liệu')).toBeInTheDocument();
     expect(screen.getByText('Sai lệch tại: Số lượng.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Xuất Excel kết quả' })).toBeInTheDocument();
+    expect(screen.getByText('Xuất toàn bộ 3 dòng')).toBeInTheDocument();
 
     const warningDisclosure = screen.getByText('Cảnh báo server (1)').closest('details');
     expect(warningDisclosure).not.toHaveAttribute('open');

@@ -3,7 +3,7 @@ export const ENGLISH_CHECK_STATUS = Object.freeze({
   CLOSE: 'Chưa sát',
   WRONG: 'Sai rõ',
   MISSING: 'Thiếu dữ liệu'
-});
+} as const);
 
 export const ENGLISH_CHECK_STATUSES = Object.freeze(Object.values(ENGLISH_CHECK_STATUS));
 
@@ -29,19 +29,38 @@ export const ENGLISH_CHECK_RESULT_HEADERS = Object.freeze({
 
 export const ENGLISH_CHECK_COLUMN_ALIASES = Object.freeze({
   stt: ['stt', 'số thứ tự'],
-  productNameVi: ['tên hàng hóa xnk', 'tên hàng hóa', 'mô tả hàng hóa'],
+  productNameVi: [
+    'tên hàng hóa xnk',
+    'tên hàng hoá xnk',
+    'tên hàng hóa',
+    'tên hàng hoá',
+    'mô tả hàng hóa',
+    'mô tả hàng hoá'
+  ],
   productNameEn: ['tên ta', 'tên tiếng anh', 'english name'],
   hsCode: ['mã hs', 'hs code'],
-  checkInfo: ['check/bổ sung thông tin'],
+  checkInfo: ['check/bổ sung thông tin', 'check bổ sung thông tin'],
   customerFeedback: ['kh phản hồi thông tin'],
   quoteCode: ['mã báo giá'],
   trackingCode: ['mã vận đơn']
 });
 
 export const ENGLISH_CHECK_HEADER_SCAN_LIMIT = 20;
-export const ENGLISH_CHECK_BATCH_SIZE = 8;
-export const ENGLISH_CHECK_CONCURRENCY = 3;
 export const ENGLISH_CHECK_EXTENSIONS = Object.freeze(['.xlsx']);
+
+export const AUDIT_BATCH_SIZE = 3;
+export const AUDIT_CONCURRENCY = 3;
+export const AUDIT_MAX_ITEMS = 5;
+export const AUDIT_MAX_ATTEMPTS = 3;
+export const AUDIT_SOFT_TIMEOUT_MS = 45_000;
+export const AUDIT_CLIENT_TIMEOUT_MS = 55_000;
+export const RISK_CONFIDENCE_THRESHOLD = 0.85;
+export const SECOND_OPINION_RISK_THRESHOLD = 7;
+
+// Backward-compatible names used by the UI while the checker is migrated.
+export const ENGLISH_CHECK_BATCH_SIZE = AUDIT_BATCH_SIZE;
+export const ENGLISH_CHECK_CONCURRENCY = AUDIT_CONCURRENCY;
+export const ENGLISH_CHECK_RISK_CONFIDENCE_THRESHOLD = RISK_CONFIDENCE_THRESHOLD;
 
 export const ENGLISH_CHECK_GENERIC_ONLY_NAMES = Object.freeze([
   'module',

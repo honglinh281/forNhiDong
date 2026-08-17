@@ -329,7 +329,8 @@ img {
 }
 
 .start-button:disabled,
-.filter-chip:disabled {
+.filter-chip:disabled,
+.download-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
@@ -354,6 +355,17 @@ img {
   gap: 16px;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.result-export-actions {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.result-export-actions span {
+  color: var(--muted);
+  font-size: 0.84rem;
 }
 
 .result-file-row {
@@ -779,6 +791,31 @@ tbody tr.is-alt-row {
   gap: 18px;
 }
 
+.english-progress-heading,
+.english-result-actions,
+.english-queue-actions,
+.english-progress-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.english-progress-heading {
+  justify-content: space-between;
+}
+
+.english-queue-actions button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(123, 92, 71, 0.18);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 700;
+}
+
 .english-progress-track {
   width: 100%;
   height: 14px;
@@ -802,6 +839,15 @@ tbody tr.is-alt-row {
   font-size: 0.9rem;
 }
 
+.english-progress-stats span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(252, 248, 248, 0.82);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .english-results-card {
   display: grid;
   gap: 18px;
@@ -812,6 +858,10 @@ tbody tr.is-alt-row {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
+}
+
+.english-result-actions {
+  justify-content: flex-end;
 }
 
 .download-button {
@@ -900,6 +950,25 @@ tbody tr.is-alt-row {
   line-height: 1.55;
 }
 
+.english-audit-details {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(123, 92, 71, 0.12);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.english-audit-details summary {
+  cursor: pointer;
+  color: var(--button-ink);
+  font-weight: 700;
+}
+
+.english-audit-details ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
 .english-status-pill {
   display: inline-flex;
   align-items: center;
@@ -951,6 +1020,10 @@ tbody tr.is-alt-row {
 
   .results-header {
     flex-direction: column;
+  }
+
+  .result-export-actions {
+    justify-items: start;
   }
 
   .english-summary-grid {

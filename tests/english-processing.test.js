@@ -14,7 +14,9 @@ describe('English checker processing', () => {
         excelRow: 2,
         stt: '1',
         productNameVi: 'Cánh bơm',
-        productNameEn: 'Water pump'
+        productNameEn: 'Water pump',
+        checkInfo: '',
+        customerFeedback: ''
       },
       {
         rowId: 'Sheet1:3',
@@ -22,7 +24,9 @@ describe('English checker processing', () => {
         excelRow: 3,
         stt: '2',
         productNameVi: '  CÁNH BƠM ',
-        productNameEn: ' water   pump '
+        productNameEn: ' water   pump ',
+        checkInfo: '',
+        customerFeedback: ''
       },
       {
         rowId: 'Sheet1:4',
@@ -30,7 +34,9 @@ describe('English checker processing', () => {
         excelRow: 4,
         stt: '3',
         productNameVi: null,
-        productNameEn: 'Pump impeller'
+        productNameEn: 'Pump impeller',
+        checkInfo: '',
+        customerFeedback: ''
       },
       {
         rowId: 'Sheet1:5',
@@ -38,7 +44,9 @@ describe('English checker processing', () => {
         excelRow: 5,
         stt: '4',
         productNameVi: 'Giá đỡ máy chiếu',
-        productNameEn: null
+        productNameEn: null,
+        checkInfo: '',
+        customerFeedback: ''
       }
     ];
     const prepared = prepareEnglishChecks(rows);
@@ -48,16 +56,18 @@ describe('English checker processing', () => {
 
     const expanded = expandEnglishCheckResults(rows, prepared, [
       {
-        rowId: 'unique-check-1',
+        rowId: 'unique-audit-1',
         status: ENGLISH_CHECK_STATUS.WRONG,
         reason: 'Tên hiện tại mô tả máy hoàn chỉnh.',
-        suggestedName: 'Pump impeller'
+        suggestedName: 'Pump impeller',
+        riskScore: 4
       },
       {
-        rowId: 'unique-check-2',
-        status: ENGLISH_CHECK_STATUS.OK,
-        reason: 'AI không được giữ reason này.',
-        suggestedName: 'Projector stand'
+        rowId: 'unique-audit-2',
+        status: ENGLISH_CHECK_STATUS.MISSING,
+        reason: 'Thiếu "Tên TA".',
+        suggestedName: 'Projector stand',
+        riskScore: 1
       }
     ]);
 
@@ -95,7 +105,7 @@ describe('English checker processing', () => {
     ]);
 
     expect(prepared.uniqueRows).toHaveLength(2);
-    expect(prepared.groupsByUniqueRowId.get('unique-check-1')).toHaveLength(2);
-    expect(prepared.groupsByUniqueRowId.get('unique-check-2')).toHaveLength(1);
+    expect(prepared.groupsByUniqueRowId.get('unique-audit-1')).toHaveLength(2);
+    expect(prepared.groupsByUniqueRowId.get('unique-audit-2')).toHaveLength(1);
   });
 });
