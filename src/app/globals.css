@@ -329,7 +329,8 @@ img {
 }
 
 .start-button:disabled,
-.filter-chip:disabled {
+.filter-chip:disabled,
+.download-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
@@ -354,6 +355,17 @@ img {
   gap: 16px;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.result-export-actions {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.result-export-actions span {
+  color: var(--muted);
+  font-size: 0.84rem;
 }
 
 .result-file-row {
@@ -1008,6 +1020,10 @@ tbody tr.is-alt-row {
 
   .results-header {
     flex-direction: column;
+  }
+
+  .result-export-actions {
+    justify-items: start;
   }
 
   .english-summary-grid {

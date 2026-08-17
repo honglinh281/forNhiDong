@@ -3,6 +3,7 @@
 import { useDeferredValue, useState, useTransition } from 'react';
 
 import { EXCEL_EXTENSIONS, PDF_EXTENSIONS, ROW_STATUS, STATUS_LABELS } from '@/lib/constants';
+import { buildComparisonExportFileName, createComparisonResultWorkbook } from '@/lib/export';
 import { hasAllowedExtension } from '@/lib/normalize';
 
 const FIGMA_EXCEL_ICON = 'https://www.figma.com/api/mcp/asset/c0c0160d-c929-49b2-acf9-5cbff18bdc52';
@@ -149,13 +150,14 @@ export default function CustomsCheckerApp({ embedded = false }) {
   const [showOnlyErrors, setShowOnlyErrors] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [dragTarget, setDragTarget] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const deferredRows = useDeferredValue(result?.rows ?? []);
   const visibleRows = getVisibleRows(deferredRows, showOnlyErrors);
   const noticeMessage = getNoticeMessage({ errorMessage, excelFile, isSubmitting, pdfFile, result });
-  const isBusy = isSubmitting || isPending;
+  const isBusy = isSubmitting || isPending || isExporting;
   const showLoadingState = isSubmitting;
 
   function updateSelectedFile(kind, file) {
@@ -248,6 +250,38 @@ export default function CustomsCheckerApp({ embedded = false }) {
     }
   }
 
+  async function handleExport() {
+    if (!result) return;
+
+    setErrorMessage('');
+    setIsExporting(true);
+
+    try {
+      const output = await createComparisonResultWorkbook({
+        rows: result.rows,
+        summary: result.summary,
+        excelFileName: excelFile?.name ?? '',
+        pdfFileName: pdfFile?.name ?? '',
+        parserWarnings: result.parserWarnings ?? []
+      });
+      const blob = new Blob([output], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = buildComparisonExportFileName(excelFile?.name);
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Không thể tạo file Excel kết quả.');
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   const summaryCards = [
     {
       label: 'Tổng số dòng',
@@ -337,7 +371,14 @@ export default function CustomsCheckerApp({ embedded = false }) {
               <FileBadge fileName={pdfFile?.name ?? 'Chưa chọn file PDF'} iconSrc={FIGMA_PDF_ICON} />
             </div>
           </div>
-
+          {result ? (
+            <div className="result-export-actions">
+              <button className="download-button" disabled={isExporting} onClick={() => void handleExport()} type="button">
+                {isExporting ? 'Đang tạo file...' : 'Xuất Excel kết quả'}
+              </button>
+              <span>Xuất toàn bộ {result.rows.length} dòng</span>
+            </div>
+          ) : null}
         </div>
 
         <div className="summary-grid">
